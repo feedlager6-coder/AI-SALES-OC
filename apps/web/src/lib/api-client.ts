@@ -101,6 +101,36 @@ export interface CompanyFilters {
   city?: string
   industry?: string
   search?: string
+  icpMin?: number
+  icpMax?: number
+  source?: string
+}
+
+// ─── Lead source types ────────────────────────────────────────────────────────
+
+export interface LeadSourceSearchBody {
+  source: '2gis' | 'hhru'
+  city: string
+  industry?: string
+  keywords?: string[]
+  limit?: number
+}
+
+export interface LeadSearchJob {
+  jobId: string
+  source: string
+  status: string
+  city?: string
+}
+
+export interface LeadSearchJobStatus {
+  jobId: string
+  state: 'waiting' | 'active' | 'completed' | 'failed' | 'delayed'
+  progress: number
+  result?: { companiesFound: number; companiesImported: number; companiesSkipped: number }
+  failedReason?: string
+  processedAt?: string
+  finishedAt?: string
 }
 
 export interface CreateCompanyBody {
@@ -315,6 +345,21 @@ export const api = {
         body: JSON.stringify(body),
       }),
     delete: (id: string) => request<void>(`/api/deals/${id}`, { method: 'DELETE' }),
+  },
+
+  // Lead Sources (Sprint 1.3)
+  leadSources: {
+    search: (body: LeadSourceSearchBody) =>
+      request<{ data: LeadSearchJob }>('/api/lead-sources/search', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    jobStatus: (jobId: string) =>
+      request<{ data: LeadSearchJobStatus }>(`/api/lead-sources/jobs/${jobId}`),
+    providers: () =>
+      request<{ data: Array<{ id: string; name: string; description: string; requiresApiKey: boolean }> }>(
+        '/api/lead-sources/providers',
+      ),
   },
 
   // Workspace

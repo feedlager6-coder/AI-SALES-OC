@@ -15,6 +15,7 @@ export interface RawCompanyData {
   sourceId: string
   name: string
   inn?: string
+  ogrn?: string
   domain?: string
   city?: string
   region?: string

@@ -1,13 +1,13 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** Sprint 1.2 complete (2026-07-13)
-> **Next sprint:** Sprint 1.3 — Lead Generation (2ГИС, HH.ru, ЕГРЮЛ, enrichment queue)
+> **Last updated:** Sprint 1.3 complete (2026-07-13)
+> **Next sprint:** Sprint 1.4 — Email sequences & outreach automation
 
 ---
 
 ## Replit Setup — Completed 2026-07-13
 
-The project is installed and running on Replit. All Sprint 1.1 and 1.2 work is complete:
+The project is installed and running on Replit. All Sprint 1.1, 1.2, and 1.3 work is complete:
 
 - `pnpm install` done, all packages build clean
 - DB migrated (migrations `0000_supreme_donald_blake.sql` + `0001_silly_joystick.sql` applied)
@@ -101,23 +101,47 @@ ai-sales-os/
 
 ---
 
-## Sprint 1.3 — What to do next
+## Sprint 1.3 Status — ✅ COMPLETE
+
+### Completed
+- [x] **2ГИС lead source plugin** — `TwoGisPlugin` in `packages/plugins/src/implementations/lead-sources/twogis.provider.ts`. Calls `catalog.api.2gis.com/3.0/items`. City-name→ID map. Parses rubrics, phones, websites. Requires `TWOGIS_API_KEY`.
+- [x] **HH.ru lead source plugin** — `HHRuPlugin` in `packages/plugins/src/implementations/lead-sources/hhru.provider.ts`. Calls `api.hh.ru/employers`. Public API, no key needed. City-name→area-ID map (Russian cities).
+- [x] **Dadata enrichment plugin** — `DadataPlugin` in `packages/plugins/src/implementations/enrichment/dadata.provider.ts`. Calls Dadata Suggestions API (ЕГРЮЛ). INN lookup first, name search fallback. Requires `DADATA_API_KEY`.
+- [x] **Hunter.io email finder** — `HunterPlugin` in `packages/plugins/src/implementations/enrichment/hunter.provider.ts`. Priority 1 in email waterfall. Email Finder (person) + Domain Search. Requires `HUNTER_API_KEY`.
+- [x] **Snov.io email finder** — `SnovPlugin` in `packages/plugins/src/implementations/enrichment/snov.provider.ts`. Priority 2 in email waterfall. Requires `SNOV_API_KEY`.
+- [x] **Plugin registry updated** — `packages/plugins/src/registry/register-all.ts` registers all new plugins with priorities: 2GIS=1, HH=2, CSV=99; Hunter=1, Snov=2, Pattern=99; Dadata=1, EGRUL=2.
+- [x] **Scraping queue** — `getScrapingQueue()` in `packages/queue/src/queues.ts`. Handles `Search2GISPayload | SearchHHRuPayload`.
+- [x] **Scraping worker** — `apps/workers/src/scraping/scraping.worker.ts`. Processes `SEARCH_2GIS` and `SEARCH_HHRU` jobs. Upserts companies to DB (dedup by INN). Computes ICP score. Concurrency=2.
+- [x] **Lead sources API** — `apps/api/src/routes/lead-sources.ts`. `POST /api/lead-sources/search` dispatches scraping job; `GET /api/lead-sources/jobs/:jobId` polls BullMQ state; `GET /api/lead-sources/providers` lists providers.
+- [x] **Enrichment queue wiring** — `POST /api/companies/:id/enrich` now dispatches real `ENRICH_COMPANY` BullMQ job (no longer a stub).
+- [x] **Companies API extended** — `GET /api/companies` supports `icpMin`, `icpMax`, `source` filters.
+- [x] **UI: "Найти компании" modal** — `apps/web/src/components/companies/lead-search-modal.tsx`. Source selector (2ГИС/HH.ru), city, industry, limit slider. Polls job status with progress bar. Shows result stats.
+- [x] **UI: ICP range filter** — `/companies` page has collapsible ICP Score panel with dual min/max sliders. Values applied on "Применить".
+- [x] **UI: Source filter** — Source dropdown on companies list page.
+- [x] **API client extended** — `apps/web/src/lib/api-client.ts` — added `icpMin`, `icpMax`, `source` to `CompanyFilters`; `api.leadSources` namespace (`search`, `jobStatus`, `providers`).
+- [x] All TypeScript strict — zero errors across api, web, workers, all packages
+- [x] Lint — zero ESLint warnings across all apps
+- [x] All 7 packages build clean
+
+### Env vars to add for Sprint 1.3 features
+- `TWOGIS_API_KEY` — required for 2ГИС search
+- `DADATA_API_KEY` — required for ЕГРЮЛ enrichment via Dadata
+- `HUNTER_API_KEY` — required for Hunter.io email finder
+- `SNOV_API_KEY` — required for Snov.io email finder
+
+### Notes
+- EGRUL nalog.ru provider (`packages/plugins/src/implementations/enrichment/egrul.ts`) remains a stub returning `null`. Dadata is the primary ЕГРЮЛ data source.
+- `RawCompanyData` interface now has `ogrn?: string` field (added for 2ГИС org data).
+
+---
+
+## Sprint 1.4 — What to do next
 
 ### Critical path
-1. **2ГИС API integration** — Search companies by category + city. Implement `ILeadSourceProvider` in `packages/plugins/src/implementations/lead-sources/twogis.provider.ts`
-2. **HH.ru API integration** — Employers + vacancies. Same provider interface.
-3. **ЕГРЮЛ via Dadata** — Company enrichment from Russian registry. Implement `IEnrichmentProvider` in `packages/plugins/src/implementations/enrichment/dadata.provider.ts`
-4. **Enrichment queue wiring** — Activate the `POST /api/companies/:id/enrich` dispatch to `QUEUES.ENRICHMENT` (currently stubbed). Implement the enrichment worker processor in `apps/workers/src/enrichment/`.
-5. **Email discovery waterfall** — Hunter.io → Snov.io → fallback. Implement `IEmailFinderProvider`.
-6. **UI: ICP filter + search launch** — `/companies` page: add ICP score range slider, source filter, launch search modal (2ГИС / HH.ru form)
-
-### API routes needed in Sprint 1.3
-- `POST /api/lead-sources/search` — trigger a 2ГИС / HH.ru search job
-- `GET /api/lead-sources/jobs/:jobId` — poll search job status
-
-### Env vars to add in Sprint 1.3
-- `TWOGIS_API_KEY`
-- `DADATA_API_KEY`
+1. **Email sequence builder** — Compose multi-step email sequences with delay rules, A/B variants, stop conditions
+2. **Outreach sending** — Integrate email sending (SMTP / SendGrid / Postmark). Queue-based delivery. Respect daily send limits.
+3. **Sequence status tracking** — Track open, click, reply, bounce events per contact per sequence
+4. **Sequence UI** — `/sequences` page with builder, active campaign dashboard, per-lead status
 - `HUNTER_API_KEY`
 - `SNOV_API_KEY`
 

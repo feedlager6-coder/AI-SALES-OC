@@ -27,6 +27,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@ai-sales-os/config": "workspace:*",
     "@ai-sales-os/logger": "workspace:*"
   },
   "devDependencies": {

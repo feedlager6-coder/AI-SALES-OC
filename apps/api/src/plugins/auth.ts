@@ -65,7 +65,16 @@ export function getAuth(): AuthInstance {
         maxAge: 60 * 5, // Cache session for 5 min
       },
     },
-    trustedOrigins: [env.BETTER_AUTH_URL],
+    trustedOrigins: [
+      env.BETTER_AUTH_URL,
+      // Trust Replit preview proxy domains in all environments
+      ...(process.env.REPLIT_DEV_DOMAIN
+        ? [`https://${process.env.REPLIT_DEV_DOMAIN}`]
+        : []),
+      ...(process.env.REPLIT_DOMAINS
+        ? process.env.REPLIT_DOMAINS.split(',').map((d) => `https://${d.trim()}`)
+        : []),
+    ],
     // Our schema generates IDs at the DB level (uuid default gen_random_uuid()).
     // Without this, Better Auth generates its own non-UUID string IDs, which
     // fail to insert into the uuid-typed primary key columns.

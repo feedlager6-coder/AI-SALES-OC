@@ -7,6 +7,8 @@ import type {
   GenerateEmailPayload,
   ClassifyReplyPayload,
   NotifySdrPayload,
+  Search2GISPayload,
+  SearchHHRuPayload,
 } from './jobs.js'
 
 const DEFAULT_JOB_OPTIONS = {
@@ -33,6 +35,7 @@ let _enrichmentQueue: Queue<EnrichCompanyPayload> | null = null
 let _emailQueue: Queue<SendEmailPayload> | null = null
 let _aiQueue: Queue<GenerateEmailPayload | ClassifyReplyPayload> | null = null
 let _notificationQueue: Queue<NotifySdrPayload> | null = null
+let _scrapingQueue: Queue<Search2GISPayload | SearchHHRuPayload> | null = null
 
 export function getEnrichmentQueue(): Queue<EnrichCompanyPayload> {
   _enrichmentQueue ??= createQueue<EnrichCompanyPayload>(QUEUES.ENRICHMENT)
@@ -54,11 +57,17 @@ export function getNotificationQueue(): Queue<NotifySdrPayload> {
   return _notificationQueue
 }
 
+export function getScrapingQueue(): Queue<Search2GISPayload | SearchHHRuPayload> {
+  _scrapingQueue ??= createQueue<Search2GISPayload | SearchHHRuPayload>(QUEUES.SCRAPING)
+  return _scrapingQueue
+}
+
 export async function closeAllQueues(): Promise<void> {
   await Promise.all([
     _enrichmentQueue?.close(),
     _emailQueue?.close(),
     _aiQueue?.close(),
     _notificationQueue?.close(),
+    _scrapingQueue?.close(),
   ])
 }

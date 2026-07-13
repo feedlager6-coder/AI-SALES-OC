@@ -6,6 +6,7 @@ import { registerAllPlugins } from '@ai-sales-os/plugins'
 import { startEnrichmentWorker } from './enrichment/enrichment.worker.js'
 import { startEmailWorker } from './email/email.worker.js'
 import { startAiWorker } from './ai/ai.worker.js'
+import { startScrapingWorker } from './scraping/scraping.worker.js'
 
 const logger = createLogger({ name: 'workers:main' })
 
@@ -20,6 +21,7 @@ async function main() {
     startEnrichmentWorker(),
     startEmailWorker(),
     startAiWorker(),
+    startScrapingWorker(),
   ]
 
   logger.info({ event: 'workers.started', count: workers.length })

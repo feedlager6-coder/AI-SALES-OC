@@ -12,6 +12,7 @@ import { workspaceRoutes } from './routes/workspace.js'
 import { companiesRoutes } from './routes/companies.js'
 import { contactsRoutes } from './routes/contacts.js'
 import { dealsRoutes } from './routes/deals.js'
+import { leadSourcesRoutes } from './routes/lead-sources.js'
 
 const logger = createLogger({ name: 'api:app' })
 
@@ -108,6 +109,7 @@ export async function buildApp() {
   await app.register(companiesRoutes, { prefix: '/api/companies' })
   await app.register(contactsRoutes, { prefix: '/api/contacts' })
   await app.register(dealsRoutes, { prefix: '/api/deals' })
+  await app.register(leadSourcesRoutes, { prefix: '/api/lead-sources' })
 
   return app
 }

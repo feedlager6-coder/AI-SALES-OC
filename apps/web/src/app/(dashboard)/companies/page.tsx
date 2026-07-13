@@ -8,12 +8,15 @@ import {
   flexRender,
   type ColumnDef,
 } from '@tanstack/react-table'
-import { Building2, Plus, Search, Upload, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Building2, Plus, Search, Upload, RefreshCw, ChevronLeft, ChevronRight, Zap, SlidersHorizontal,
+} from 'lucide-react'
 import Link from 'next/link'
 import { api, type Company, type CompanyFilters } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { CompanyForm } from '@/components/companies/company-form'
 import { CsvImportModal } from '@/components/companies/csv-import-modal'
+import { LeadSearchModal } from '@/components/companies/lead-search-modal'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -76,6 +79,21 @@ function IcpScoreBadge({ score }: { score: number }) {
   return <span className={cn('text-sm tabular-nums', color)}>{score}</span>
 }
 
+function SourceBadge({ source }: { source: string }) {
+  const labels: Record<string, string> = {
+    '2gis': '2ГИС',
+    'hhru': 'HH.ru',
+    'csv': 'CSV',
+    'manual': 'Вручную',
+    'api': 'API',
+  }
+  return (
+    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-muted text-muted-foreground">
+      {labels[source] ?? source}
+    </span>
+  )
+}
+
 // ─── Table columns ────────────────────────────────────────────────────────────
 
 const columns: ColumnDef<Company>[] = [
@@ -109,6 +127,11 @@ const columns: ColumnDef<Company>[] = [
     cell: ({ row }) => (
       <span className="text-sm text-muted-foreground">{row.original.industry ?? '—'}</span>
     ),
+  },
+  {
+    id: 'source',
+    header: 'Источник',
+    cell: ({ row }) => <SourceBadge source={row.original.source} />,
   },
   {
     id: 'status',
@@ -157,12 +180,24 @@ const STATUSES = [
   { value: 'low_quality', label: 'Низкое качество' },
 ]
 
+const SOURCES = [
+  { value: '', label: 'Все источники' },
+  { value: '2gis', label: '2ГИС' },
+  { value: 'hhru', label: 'HH.ru' },
+  { value: 'csv', label: 'CSV' },
+  { value: 'manual', label: 'Вручную' },
+]
+
 export default function CompaniesPage() {
   const queryClient = useQueryClient()
   const [filters, setFilters] = useState<CompanyFilters>({ page: 1, limit: 20 })
   const [search, setSearch] = useState('')
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showLeadSearch, setShowLeadSearch] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  // ICP slider state (local — applied on "Apply" or slider release)
+  const [icpRange, setIcpRange] = useState<[number, number]>([0, 100])
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['companies', filters],
@@ -195,12 +230,43 @@ export default function CompaniesPage() {
     })
   }
 
+  const handleSourceChange = (source: string) => {
+    setFilters((f) => {
+      const next: CompanyFilters = { ...f, page: 1 }
+      if (source) next.source = source
+      else delete next.source
+      return next
+    })
+  }
+
+  const applyIcpFilter = () => {
+    setFilters((f) => {
+      const next: CompanyFilters = { ...f, page: 1 }
+      if (icpRange[0] > 0) next.icpMin = icpRange[0]
+      else delete next.icpMin
+      if (icpRange[1] < 100) next.icpMax = icpRange[1]
+      else delete next.icpMax
+      return next
+    })
+  }
+
+  const resetIcpFilter = () => {
+    setIcpRange([0, 100])
+    setFilters((f) => {
+      const next = { ...f, page: 1 }
+      delete next.icpMin
+      delete next.icpMax
+      return next
+    })
+  }
+
   const handlePage = (delta: number) => {
     setFilters((f) => ({ ...f, page: Math.max(1, (f.page ?? 1) + delta) }))
   }
 
   const totalPages = data ? Math.ceil(data.meta.total / (data.meta.limit)) : 1
   const currentPage = filters.page ?? 1
+  const hasActiveFilters = filters.status || filters.source || filters.icpMin !== undefined || filters.icpMax !== undefined
 
   return (
     <div className="space-y-6">
@@ -213,6 +279,13 @@ export default function CompaniesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowLeadSearch(true)}
+            className="inline-flex items-center gap-2 rounded-md bg-primary/10 border border-primary/30 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
+          >
+            <Zap className="h-4 w-4" />
+            Найти компании
+          </button>
           <button
             onClick={() => setShowImport(true)}
             className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
@@ -231,35 +304,151 @@ export default function CompaniesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Search */}
-        <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 min-w-72">
-          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-          <input
-            type="text"
-            placeholder="Поиск по названию, ИНН..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-          />
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search */}
+          <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 min-w-72">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <input
+              type="text"
+              placeholder="Поиск по названию, ИНН..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+            />
+          </div>
+
+          {/* Status filter */}
+          <select
+            value={filters.status ?? ''}
+            onChange={(e) => handleStatusChange(e.target.value)}
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none cursor-pointer"
+          >
+            {STATUSES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Source filter */}
+          <select
+            value={filters.source ?? ''}
+            onChange={(e) => handleSourceChange(e.target.value)}
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none cursor-pointer"
+          >
+            {SOURCES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Advanced filters toggle */}
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors',
+              showFilters || filters.icpMin !== undefined || filters.icpMax !== undefined
+                ? 'border-primary/50 bg-primary/10 text-primary'
+                : 'border-border bg-card text-foreground hover:bg-accent',
+            )}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            ICP фильтр
+          </button>
+
+          {isFetching && (
+            <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
+          )}
+
+          {hasActiveFilters && (
+            <button
+              onClick={() => {
+                setFilters({ page: 1, limit: 20 })
+                setSearch('')
+                setIcpRange([0, 100])
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+            >
+              Сбросить фильтры
+            </button>
+          )}
         </div>
 
-        {/* Status filter */}
-        <select
-          value={filters.status ?? ''}
-          onChange={(e) => handleStatusChange(e.target.value)}
-          className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground outline-none cursor-pointer"
-        >
-          {STATUSES.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-
-        {isFetching && (
-          <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
+        {/* ICP range slider panel */}
+        {showFilters && (
+          <div className="rounded-lg border border-border bg-card p-4 flex items-end gap-6">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-foreground mb-3">
+                ICP Score:{' '}
+                <span className="text-primary font-semibold">
+                  {icpRange[0]} — {icpRange[1]}
+                </span>
+                {(filters.icpMin !== undefined || filters.icpMax !== undefined) && (
+                  <span className="ml-2 text-xs text-muted-foreground">(применён)</span>
+                )}
+              </label>
+              {/* Min slider */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-6">Мин</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={icpRange[0]}
+                    onChange={(e) => {
+                      const val = Number(e.target.value)
+                      setIcpRange(([, max]) => [Math.min(val, max - 5), max])
+                    }}
+                    className="flex-1 accent-primary"
+                  />
+                  <span className="text-xs text-foreground w-8 text-right tabular-nums">{icpRange[0]}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-6">Макс</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={icpRange[1]}
+                    onChange={(e) => {
+                      const val = Number(e.target.value)
+                      setIcpRange(([min]) => [min, Math.max(val, min + 5)])
+                    }}
+                    className="flex-1 accent-primary"
+                  />
+                  <span className="text-xs text-foreground w-8 text-right tabular-nums">{icpRange[1]}</span>
+                </div>
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                <span>Reject (&lt;30)</span>
+                <span className="text-amber-500">Нейтральный (30–49)</span>
+                <span className="text-blue-500">Qualified (50–74)</span>
+                <span className="text-emerald-500">High (≥75)</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={applyIcpFilter}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Применить
+              </button>
+              {(filters.icpMin !== undefined || filters.icpMax !== undefined) && (
+                <button
+                  onClick={resetIcpFilter}
+                  className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                >
+                  Сбросить
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -273,12 +462,22 @@ export default function CompaniesPage() {
           <div className="flex flex-col items-center justify-center h-48 gap-3">
             <Building2 className="h-10 w-10 text-muted-foreground/40" />
             <p className="text-muted-foreground text-sm">Компании не найдены</p>
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="text-sm text-primary hover:underline"
-            >
-              Добавить первую компанию
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowLeadSearch(true)}
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Найти компании в 2ГИС / HH.ru
+              </button>
+              <span className="text-muted-foreground">или</span>
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="text-sm text-primary hover:underline"
+              >
+                Добавить вручную
+              </button>
+            </div>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -361,6 +560,15 @@ export default function CompaniesPage() {
           onClose={() => setShowImport(false)}
           onSuccess={() => {
             setShowImport(false)
+            queryClient.invalidateQueries({ queryKey: ['companies'] })
+          }}
+        />
+      )}
+      {showLeadSearch && (
+        <LeadSearchModal
+          open={showLeadSearch}
+          onClose={() => setShowLeadSearch(false)}
+          onComplete={() => {
             queryClient.invalidateQueries({ queryKey: ['companies'] })
           }}
         />

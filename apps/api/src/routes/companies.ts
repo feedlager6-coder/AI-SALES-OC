@@ -1,12 +1,13 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, eq, isNull, desc, ilike, count, or, sql, type SQL } from 'drizzle-orm'
+import { and, eq, isNull, desc, ilike, count, or, sql, gte, lte, type SQL } from 'drizzle-orm'
 import { getDb, companies, contacts, activities } from '@ai-sales-os/db'
 import type { CompanyStatus } from '@ai-sales-os/types'
 import { CompanyNotFoundError, CompanyDuplicateError } from '@ai-sales-os/errors'
 import { workspaceContextPlugin } from '../plugins/workspace-context.js'
 import { computeIcpScore, icpScoreToStatus } from '../services/icp-scoring.js'
 import { createLogger } from '@ai-sales-os/logger'
+import { getEnrichmentQueue, JOBS, makeJobId } from '@ai-sales-os/queue'
 
 const logger = createLogger({ name: 'api:companies' })
 
@@ -38,6 +39,11 @@ const ListCompaniesSchema = z.object({
   city: z.string().optional(),
   industry: z.string().optional(),
   search: z.string().optional(),
+  // Sprint 1.3: ICP score range filter
+  icpMin: z.coerce.number().int().min(0).max(100).optional(),
+  icpMax: z.coerce.number().int().min(0).max(100).optional(),
+  // Sprint 1.3: source filter
+  source: z.enum(['2gis', 'hhru', 'csv', 'manual', 'api']).optional(),
 })
 
 const BatchImportSchema = z.object({
@@ -65,6 +71,15 @@ export const companiesRoutes: FastifyPluginAsync = async (app) => {
     }
     if (query.industry) {
       conditions.push(ilike(companies.industry, `%${query.industry}%`))
+    }
+    if (query.icpMin !== undefined) {
+      conditions.push(gte(companies.icpScore, query.icpMin) as unknown as SQL)
+    }
+    if (query.icpMax !== undefined) {
+      conditions.push(lte(companies.icpScore, query.icpMax) as unknown as SQL)
+    }
+    if (query.source) {
+      conditions.push(eq(companies.source, query.source) as unknown as SQL)
     }
 
     // Full-text search on company name and legal name using Russian GIN index
@@ -340,9 +355,12 @@ export const companiesRoutes: FastifyPluginAsync = async (app) => {
       .set({ enrichmentStatus: 'in_progress', updatedAt: new Date() })
       .where(eq(companies.id, id))
 
-    // TODO Sprint 1.3: dispatch to enrichment queue
-    // const { getQueue } = await import('@ai-sales-os/queue')
-    // await getQueue(QUEUES.ENRICHMENT).add(JOBS.ENRICH_COMPANY, { workspaceId: request.workspaceId, companyId: id })
+    // Dispatch enrichment job to BullMQ
+    await getEnrichmentQueue().add(
+      JOBS.ENRICH_COMPANY,
+      { workspaceId: request.workspaceId, companyId: id },
+      { jobId: makeJobId(JOBS.ENRICH_COMPANY, id) },
+    )
 
     logger.info({
       event: 'company.enrich.triggered',

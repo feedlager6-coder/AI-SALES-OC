@@ -284,6 +284,9 @@ importers:
 
   packages/plugins:
     dependencies:
+      '@ai-sales-os/config':
+        specifier: workspace:*
+        version: link:../config
       '@ai-sales-os/logger':
         specifier: workspace:*
         version: link:../logger
