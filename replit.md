@@ -45,7 +45,9 @@ cd apps/api && pnpm dev
 
 ### Replit networking note
 
-Only port 5000 is publicly reachable, so the browser must never call the Fastify API (port 3001) directly. `apps/web/next.config.ts` rewrites `/api/*` to `http://localhost:3001/api/*`, and `NEXT_PUBLIC_API_URL` is set to `""` (relative) for the web workflow only — this keeps the app on a single origin and avoids cross-port cookie/CORS issues. Do not reintroduce an absolute `NEXT_PUBLIC_API_URL` pointing at port 3001.
+The browser must never call the Fastify API (port 3001) directly — it should stay same-origin. `apps/web/next.config.ts` rewrites `/api/*` to `http://localhost:3001/api/*`, and `NEXT_PUBLIC_API_URL` is set to `""` (relative) for the web workflow only. Do not reintroduce an absolute `NEXT_PUBLIC_API_URL` pointing at port 3001.
+
+`.replit` still declares an `externalPort` mapping for 3001: Replit's workflow port-detection (`waitForPort`) did not reliably detect the Fastify listener without a corresponding `[[ports]]` entry, even though the app itself was healthy (confirmed via direct `curl`) — removing it caused the "API Server" workflow to be killed as failed after its 180s timeout. Redis (6379) has no port mapping at all (unauthenticated by default, must stay localhost-only). If tightening the API's exposure further, keep an internal-only `[[ports]]` entry (no `externalPort`) rather than deleting it outright, and re-verify the workflow still opens the port before removing the external one.
 
 ### Known gap (tracked as a follow-up task)
 

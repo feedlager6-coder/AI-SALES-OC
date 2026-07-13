@@ -35,13 +35,12 @@ All business entities (Company, Contact, Deal, Campaign) use `deleted_at TIMESTA
 
 **Why:** Preserves audit trail, prevents cascade data loss, needed for compliance.
 
-## Sprint 1.1 Complete, Running on Replit (as of 2026-07-13)
-Monorepo (pnpm+Turborepo), Drizzle schema, Fastify API, Next.js web, BullMQ workers all build/typecheck/lint clean and run on Replit. Next milestone: Sprint 1.2 (CRM core + workspace provisioning) — see project tasks.
-
 ## Replit Runtime Setup
-No Docker/external Redis on Replit: `redis-server` is started inline by the "API Server" workflow command itself (system dep installed via nix). Only port 5000 is public — Next.js proxies `/api/*` to the internal Fastify server (port 3001) via `rewrites()` in `next.config.ts`, with `NEXT_PUBLIC_API_URL=""` set only for the web workflow (not shared, since the API's zod env schema requires a valid URL and rejects empty string).
+No Docker/managed Redis service on Replit: `redis-server` is started inline by the API workflow's own shell command (installed as a nix system dependency), not as a separate workflow. Next.js proxies `/api/*` to the internal Fastify server via `rewrites()` in `next.config.ts`, with `NEXT_PUBLIC_API_URL=""` set only for the web workflow's command (not a shared env var, since the API's zod env schema requires a valid URL and rejects an empty string).
 
-**Why:** Browsers can't reach non-public ports on `*.replit.dev`; same-origin proxying avoids cross-port CORS/cookie issues entirely.
+**Why:** The browser can't reach the Fastify origin directly across Replit's proxy the way it can the main webview port; same-origin proxying avoids cross-port CORS/cookie issues entirely.
+
+**How to apply:** Keep Redis off any external port mapping in `.replit` (unauthenticated by default). Replit's workflow port-detection (`waitForPort`) needs a matching `[[ports]]` entry to reliably detect a backend listener, even when that port isn't meant to be public — test removing/tightening a port mapping before assuming it's safe to drop.
 
 ## Better Auth + Drizzle Adapter Gotchas
 Two fixes were needed to make Better Auth's Drizzle adapter work with our schema: (1) `users` table needs an explicit `emailVerified` boolean column — Better Auth's adapter hard-requires it even though the docs don't call it out clearly. (2) Set `advanced.database.generateId: false` in `betterAuth()` options when your ID columns are `uuid` with a DB-side default (`gen_random_uuid()`) — otherwise Better Auth generates its own non-UUID string IDs and inserts fail.
