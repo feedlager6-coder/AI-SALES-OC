@@ -1,0 +1,1 @@
+- [AI Sales OS Architecture](ai-sales-os-arch.md) — Phase 0 complete; no prod code yet; monorepo+Plugin+Event-driven; Company not Lead is the core entity

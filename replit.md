@@ -28,77 +28,82 @@
 | Storage | MinIO / S3 |
 | Deploy | Docker Compose → Hetzner VPS |
 | CI/CD | GitHub Actions |
-| Monitoring | Prometheus + Grafana |
 
 ---
 
-## Структура проекта (будет создана в фазе разработки)
+## Состояние проекта
+
+**Текущая фаза**: Phase 0 завершена (документация и архитектура)  
+**Следующий шаг**: Phase 1, Sprint 1.1 — настройка monorepo и инфраструктуры  
+**Готовность к разработке**: 81/100
+
+---
+
+## Ключевые документы (читать в таком порядке)
+
+1. **`PROJECT_BIBLE.md`** — единый источник истины: принципы, соглашения, folder structure
+2. **`AI_HANDOFF.md`** — текущее состояние проекта и следующие шаги
+3. **`docs/domain_model.md`** — все бизнес-сущности (Company, Contact, Deal...)
+4. **`docs/event_flow.md`** — полный lifecycle лида от поиска до сделки
+5. **`docs/plugin_architecture.md`** — как добавлять провайдеров (2GIS, Hunter, Mailgun...)
+6. **`docs/ai_agents.md`** — 13 AI-агентов системы
+7. **`docs/15-adr.md`** — 11 архитектурных решений с обоснованием
+8. **`docs/00-audit-report.md`** — архитектурный аудит: риски и несоответствия
+
+---
+
+## Критические соглашения
+
+### Именование
+- Основная сущность = **Company** (не Lead, не Prospect)
+- "Лид" разговорно = Company в статусе до QUALIFIED
+- В коде нет таблицы `leads`
+
+### Безопасность
+- `workspace_id` обязателен в КАЖДОМ запросе к данным
+- PostgreSQL RLS + application-level check = двойная защита
+- Soft delete везде: `deleted_at TIMESTAMPTZ NULL`
+
+### Архитектура
+- Plugin Interface для КАЖДОГО внешнего провайдера
+- Все async операции — через BullMQ Queue (не HTTP sync)
+- Все AI вызовы — через `BaseAgent` с fallback chain
+
+---
+
+## Folder Structure
 
 ```
 ai-sales-os/
+├── PROJECT_BIBLE.md      ← Читать первым
+├── AI_HANDOFF.md         ← Текущее состояние
+├── CONTRIBUTING.md       ← Как делать PR
 ├── apps/
-│   ├── web/          # Next.js frontend
-│   ├── api/          # Fastify backend
-│   └── workers/      # Background workers (enrichment, email, AI)
+│   ├── web/              # Next.js 15
+│   ├── api/              # Fastify backend
+│   └── workers/          # BullMQ workers
 ├── packages/
-│   ├── db/           # Drizzle schema + migrations
-│   ├── ai/           # AI prompts + wrappers
-│   ├── email/        # Email templates + sending
-│   ├── enrichment/   # Enrichment providers
-│   ├── scraping/     # Web scrapers (2GIS, HH, etc.)
-│   ├── queue/        # BullMQ job definitions
-│   ├── types/        # Shared TypeScript types
-│   └── config/       # Shared configuration
-├── infra/
-│   ├── docker-compose.yml
-│   ├── docker-compose.prod.yml
-│   └── k8s/
-└── docs/             # Вся проектная документация
+│   ├── db/               # Drizzle schema + migrations
+│   ├── plugins/          # Plugin system (interfaces + implementations)
+│   ├── ai/               # AI agents + prompts
+│   ├── queue/            # Job definitions
+│   ├── types/            # Shared TypeScript types
+│   ├── config/           # Config loading
+│   ├── logger/           # Pino factory
+│   └── errors/           # Typed error classes
+├── verticals/
+│   ├── transport/        # ICP rules, prompts, source config
+│   └── construction/     # (future)
+├── infra/                # Docker, K8s
+└── docs/                 # Полная документация
 ```
-
----
-
-## Документация
-
-Вся проектная документация в папке `docs/`:
-
-| Файл | Содержание |
-|------|-----------|
-| `01-vision.md` | Видение, миссия, долгосрочные цели |
-| `02-product-goals.md` | Продуктовые цели и KPI |
-| `03-market-research.md` | Анализ рынка, конкуренты, API |
-| `04-functional-requirements.md` | Функциональные требования |
-| `05-non-functional-requirements.md` | NFR: производительность, безопасность |
-| `06-system-architecture.md` | Архитектура системы, стек, модули |
-| `07-database-design.md` | Схема БД (все таблицы) |
-| `08-api-integrations.md` | Внешние API (2ГИС, HH, Hunter, etc.) |
-| `09-ai-layer.md` | AI агенты: Writer, Classifier, Extractor |
-| `10-crm-design.md` | Дизайн CRM, пайплайн, карточки |
-| `11-ui-ux.md` | UI/UX дизайн, экраны, компоненты |
-| `12-security.md` | Безопасность, auth, шифрование |
-| `13-deployment.md` | Деплой, Docker, CI/CD, мониторинг |
-| `14-roadmap.md` | Дорожная карта по фазам |
-| `15-adr.md` | Architecture Decision Records (11 ADR) |
-| `16-todo-backlog.md` | Полный бэклог задач |
-| `17-architecture-diagrams.md` | Mermaid диаграммы (C4, ERD, flow) |
-| `18-user-scenarios.md` | Пользовательские сценарии |
-| `19-mvp-plan.md` | Детальный план MVP (8 недель) |
-
----
-
-## Текущий статус
-
-**Фаза 0: Исследование и проектирование** ✅ ЗАВЕРШЕНА
-
-Следующий шаг: подтверждение от заказчика → переход к Фазе 1 (разработка MVP).
 
 ---
 
 ## User Preferences
 
-- Язык общения: русский
-- Стиль: Principal Software Architect — объяснять архитектурные решения с обоснованием
-- На данном этапе: только исследование и документация, production-код не писать
-- Архитектурный принцип: Modular Monolith → Services by necessity
-- Приоритет: РФ-специфика (2ГИС, HH.ru, ЕГРЮЛ, Dadata, Telegram), только легальные источники данных
-- Правило: любое архитектурное решение сопровождается объяснением "почему именно так"
+- Документация на русском языке
+- Код на TypeScript (strict mode)
+- Архитектурные решения — через ADR в `docs/15-adr.md`
+- Принцип: API-first, Plugin-first, Human-in-the-loop для критичных AI действий
+- Мультитенантность: workspace_id + PostgreSQL RLS (двойная защита)
