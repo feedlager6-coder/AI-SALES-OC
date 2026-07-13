@@ -10,6 +10,8 @@ import { healthRoutes } from './routes/health.js'
 import { authRoutes } from './routes/auth.js'
 import { workspaceRoutes } from './routes/workspace.js'
 import { companiesRoutes } from './routes/companies.js'
+import { contactsRoutes } from './routes/contacts.js'
+import { dealsRoutes } from './routes/deals.js'
 
 const logger = createLogger({ name: 'api:app' })
 
@@ -104,6 +106,8 @@ export async function buildApp() {
   await app.register(authRoutes, { prefix: '/api/auth' })
   await app.register(workspaceRoutes, { prefix: '/api/workspaces' })
   await app.register(companiesRoutes, { prefix: '/api/companies' })
+  await app.register(contactsRoutes, { prefix: '/api/contacts' })
+  await app.register(dealsRoutes, { prefix: '/api/deals' })
 
   return app
 }

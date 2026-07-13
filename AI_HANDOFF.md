@@ -1,18 +1,26 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** Sprint 1.1 complete + running on Replit (2026-07-13)
-> **Next sprint:** Sprint 1.2 — Auth workspace provisioning, companies list UI
+> **Last updated:** Sprint 1.2 complete (2026-07-13)
+> **Next sprint:** Sprint 1.3 — Lead Generation (2ГИС, HH.ru, ЕГРЮЛ, enrichment queue)
+
+---
 
 ## Replit Setup — Completed 2026-07-13
 
-The project is now installed and running on Replit (`pnpm install`, packages built, DB migrated, Redis running locally). Two Sprint 1.1 bugs surfaced and were fixed while verifying registration end-to-end:
+The project is installed and running on Replit. All Sprint 1.1 and 1.2 work is complete:
 
-1. **`users` schema was missing `emailVerified`** — Better Auth's Drizzle adapter requires this column on the user table; added `email_verified boolean not null default false` (see `packages/db/src/schema/users.ts`, migration `0001_silly_joystick.sql`).
-2. **Better Auth generated non-UUID IDs** — by default Better Auth generates its own string IDs, which don't fit our `uuid` primary key columns (`id uuid default gen_random_uuid()`). Fixed by setting `advanced.database.generateId: false` in `apps/api/src/plugins/auth.ts`, so the database generates IDs instead.
+- `pnpm install` done, all packages build clean
+- DB migrated (migrations `0000_supreme_donald_blake.sql` + `0001_silly_joystick.sql` applied)
+- Redis runs locally (started by the "API Server" workflow)
+- All secrets configured as shared env vars (see `replit.md → Environment Status`)
+- Both workflows healthy: "Start application" (port 5000) + "API Server" (port 3001)
 
-See `replit.md` → "Environment Status" for the full secrets/Redis/networking setup, including the `/api/*` rewrite proxy required because Replit only exposes one public port.
+**Sprint 1.1 bugs fixed (already in AI_HANDOFF.md v1):**
+1. `users.emailVerified` column added via migration `0001_silly_joystick.sql`
+2. Better Auth `generateId: false` → DB generates UUIDs
 
-**Still open (Sprint 1.2, not a regression):** signup fails on `users.workspace_id NOT NULL` because there's no post-registration hook yet to create/assign a workspace. This was already flagged below under "Workspace provisioning" — confirmed still accurate.
+**Sprint 1.2 critical fix:**
+3. **Workspace provisioning** — Better Auth `databaseHooks.user.create.before` now creates a workspace and injects `workspaceId` into the user row before insert. Signup works end-to-end. See `apps/api/src/plugins/auth.ts`.
 
 ---
 
@@ -71,28 +79,47 @@ ai-sales-os/
 
 ---
 
-## Sprint 1.2 — What to do next
+## Sprint 1.2 Status — ✅ COMPLETE
 
-### Critical path (do first)
-1. **Database migrations** — Run `pnpm --filter=@ai-sales-os/db db:generate && db:migrate` once `DATABASE_URL` is set
-2. **Replit secrets needed:**
-   - `DATABASE_URL` — PostgreSQL connection string (Replit DB or external)
-   - `REDIS_URL` — Redis connection string
-   - `BETTER_AUTH_SECRET` — min 32-char secret for auth signing
-   - `ENCRYPTION_KEY` — 64-char hex for field encryption
-   - `BETTER_AUTH_URL` — full URL of the API (e.g. `https://<repl>.replit.dev`)
-3. **Workspace provisioning** — After registration, a workspace must be created and `users.workspaceId` set. Currently Better Auth creates the user but no workspace. Need a post-registration hook.
+### Completed
+- [x] **Workspace provisioning** — `databaseHooks.user.create.before` in Better Auth (`apps/api/src/plugins/auth.ts`). On sign-up: workspace created → `workspaceId` injected before user INSERT. Signup now works end-to-end.
+- [x] **ICP Scoring service** — Rule-based scoring in `apps/api/src/services/icp-scoring.ts`. Mirrors `verticals/transport/icp.yaml` rules. Score 0–100. Called on company create/update/import.
+- [x] **PATCH /api/companies/:id** — Update company with ICP score recomputation
+- [x] **Full-text search** — `GET /api/companies?search=` uses PostgreSQL `to_tsvector('russian', ...)` + GIN index + ILIKE fallback
+- [x] **POST /api/companies/:id/enrich** — Triggers enrichment (sets `in_progress`). Queue dispatch stubbed for Sprint 1.3.
+- [x] **POST /api/companies/import** — Batch JSON import (up to 500 rows). Deduplicates by INN. Returns `{imported, skipped, errors}`.
+- [x] **GET /api/companies/:id/contacts** — Contacts for a company
+- [x] **GET/POST /api/companies/:id/activities** — Activity timeline + manual log (note/call/meeting)
+- [x] **Contact CRUD** — Full routes in `apps/api/src/routes/contacts.ts` (GET list, GET one, POST, PATCH, DELETE)
+- [x] **Deal CRUD** — Full routes in `apps/api/src/routes/deals.ts` (GET list, GET one, POST, PATCH, DELETE). Stage changes log activities automatically.
+- [x] **UI: /companies** — Companies list page with TanStack Table, filters (status, search), pagination, ICP score badges, status badges. Add company modal. CSV import modal (client-side CSV parsing → batch JSON import).
+- [x] **UI: /companies/:id** — Company detail page: ICP bar, company info sidebar, contacts tab, activity timeline tab. Add contact/activity modals. Enrich button.
+- [x] **API client extended** — `apps/web/src/lib/api-client.ts` now covers companies, contacts, deals APIs.
+- [x] All TypeScript strict — zero errors across api, web, workers
+- [x] Lint — zero ESLint warnings across all apps
+- [x] Packages rebuild — all 7 packages build clean
 
-### API routes to add in Sprint 1.2
-- `POST /api/workspaces` — create workspace (triggered after first sign-up)
-- `GET /api/companies/:id/contacts` — company contacts
-- `POST /api/companies/:id/enrich` — trigger enrichment job
-- `GET /api/contacts` — list contacts
-- `PATCH /api/contacts/:id` — update contact
+---
 
-### Web pages to add in Sprint 1.2
-- `/companies` — companies list with filters (table with TanStack Table)
-- `/companies/:id` — company detail with enrichment status, contacts, timeline
+## Sprint 1.3 — What to do next
+
+### Critical path
+1. **2ГИС API integration** — Search companies by category + city. Implement `ILeadSourceProvider` in `packages/plugins/src/implementations/lead-sources/twogis.provider.ts`
+2. **HH.ru API integration** — Employers + vacancies. Same provider interface.
+3. **ЕГРЮЛ via Dadata** — Company enrichment from Russian registry. Implement `IEnrichmentProvider` in `packages/plugins/src/implementations/enrichment/dadata.provider.ts`
+4. **Enrichment queue wiring** — Activate the `POST /api/companies/:id/enrich` dispatch to `QUEUES.ENRICHMENT` (currently stubbed). Implement the enrichment worker processor in `apps/workers/src/enrichment/`.
+5. **Email discovery waterfall** — Hunter.io → Snov.io → fallback. Implement `IEmailFinderProvider`.
+6. **UI: ICP filter + search launch** — `/companies` page: add ICP score range slider, source filter, launch search modal (2ГИС / HH.ru form)
+
+### API routes needed in Sprint 1.3
+- `POST /api/lead-sources/search` — trigger a 2ГИС / HH.ru search job
+- `GET /api/lead-sources/jobs/:jobId` — poll search job status
+
+### Env vars to add in Sprint 1.3
+- `TWOGIS_API_KEY`
+- `DADATA_API_KEY`
+- `HUNTER_API_KEY`
+- `SNOV_API_KEY`
 
 ---
 
@@ -104,6 +131,15 @@ New providers implement the interface and register in `register-all.ts`.
 Circuit breaker (5 failures → 30 min open) guards every provider call.
 Email finding uses waterfall: confidence >= 0.3 required to stop trying.
 
+### ICP Scoring (Sprint 1.2, rule-based)
+`apps/api/src/services/icp-scoring.ts` mirrors `verticals/transport/icp.yaml`.
+Score thresholds: `qualified >= 50`, `high_quality >= 75`, `reject < 30`.
+Called automatically on company create, update, and import.
+Sprint 2.2 will add LLM hybrid scoring for edge cases.
+
+### Workspace Provisioning
+Implemented via Better Auth `databaseHooks.user.create.before`. Creates workspace, generates a slug from email domain, sets 14-day trial. Injects `workspaceId` and `role: 'owner'` into user data before DB insert. No schema migration required.
+
 ### `sent_today` Counter (RISK-001)
 Daily email send limits per email account live in **Redis INCR** (key: `sent_today:{emailAccountId}:{YYYY-MM-DD}`), **not** in the DB column. This avoids write contention under high concurrency. The `emailAccounts.sentToday` DB column is NOT used — treat it as display cache only.
 
@@ -114,7 +150,10 @@ Double isolation: PostgreSQL RLS (`app.current_workspace_id` session variable) +
 Two ioredis versions may be pulled in by BullMQ's deps. The `packages/queue/src/queues.ts` casts the connection to `ConnectionOptions` to avoid the type conflict. At runtime they're the same binary — no issue.
 
 ### Better Auth + Zod
-`better-auth@1.2.x` internally requires `zod@^4` (via `better-call` peer). We pin `zod@^3` in all our packages and schemas. This is a peer dep warning only; auth functionality works. Resolve in Sprint 1.2 by either: (a) upgrading to zod v4 throughout, or (b) waiting for better-auth to ship a zod-agnostic adapter.
+`better-auth@1.2.x` internally requires `zod@^4` (via `better-call` peer). We pin `zod@^3` in all our packages and schemas. This is a peer dep warning only; auth functionality works. Resolve in a future sprint by either: (a) upgrading to zod v4 throughout, or (b) waiting for better-auth to ship a zod-agnostic adapter.
+
+### `exactOptionalPropertyTypes: true`
+The tsconfig enforces `exactOptionalPropertyTypes`. This means `{ foo?: string }` rejects explicit `undefined`. When building payloads to pass to API functions, use the omit-if-falsy pattern (`if (x) payload.x = x`) rather than spreading optional fields directly.
 
 ---
 
@@ -142,6 +181,12 @@ Two ioredis versions may be pulled in by BullMQ's deps. The `packages/queue/src/
 | Auth (Better Auth) | `apps/api/src/plugins/auth.ts` |
 | Workspace context | `apps/api/src/plugins/workspace-context.ts` |
 | Companies API | `apps/api/src/routes/companies.ts` |
+| Contacts API | `apps/api/src/routes/contacts.ts` |
+| Deals API | `apps/api/src/routes/deals.ts` |
+| ICP Scoring service | `apps/api/src/services/icp-scoring.ts` |
+| API client (web) | `apps/web/src/lib/api-client.ts` |
 | Next.js root | `apps/web/src/app/layout.tsx` |
 | Auth middleware | `apps/web/src/middleware.ts` |
+| Companies list page | `apps/web/src/app/(dashboard)/companies/page.tsx` |
+| Company detail page | `apps/web/src/app/(dashboard)/companies/[id]/page.tsx` |
 | ICP rules | `verticals/transport/icp.yaml` |

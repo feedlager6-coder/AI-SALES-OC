@@ -1,17 +1,38 @@
 /**
  * Better Auth integration for Fastify.
- * Provides: session extraction, workspace context injection.
+ * Provides: session extraction, workspace provisioning on first sign-up.
+ *
+ * On user creation (sign-up), a workspace is automatically created and
+ * the user is assigned as its owner via databaseHooks.user.create.before.
  */
 import { betterAuth, type BetterAuthOptions } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { getDb } from '@ai-sales-os/db'
+import { getDb, workspaces } from '@ai-sales-os/db'
 import * as schema from '@ai-sales-os/db/schema'
 import { getEnv } from '@ai-sales-os/config'
+import { createLogger } from '@ai-sales-os/logger'
+
+const logger = createLogger({ name: 'api:auth' })
 
 // Use `ReturnType` so the type follows the actual options shape
 type AuthInstance = ReturnType<typeof betterAuth>
 
 let _auth: AuthInstance | null = null
+
+/**
+ * Derive a unique workspace slug from the user's email or name.
+ * e.g. user@company.com → company-a1b2
+ */
+function deriveWorkspaceSlug(email: string): string {
+  const domain = email.split('@')[1] ?? email
+  const base = domain
+    .split('.')[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 20)
+  const suffix = Math.random().toString(36).slice(2, 6)
+  return `${base}-${suffix}`
+}
 
 export function getAuth(): AuthInstance {
   if (_auth) return _auth
@@ -51,6 +72,51 @@ export function getAuth(): AuthInstance {
     advanced: {
       database: {
         generateId: false,
+      },
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          /**
+           * Before creating the user, provision a workspace and inject the
+           * workspaceId into the user record so the NOT NULL constraint is
+           * satisfied. The first user in a workspace is always 'owner'.
+           */
+          before: async (userData) => {
+            const trialEndsAt = new Date()
+            trialEndsAt.setDate(trialEndsAt.getDate() + 14)
+
+            const slug = deriveWorkspaceSlug(userData.email as string)
+            const workspaceName =
+              (userData.name as string | undefined)?.trim() ||
+              (userData.email as string).split('@')[0]
+
+            const [workspace] = await db
+              .insert(workspaces)
+              .values({
+                name: `${workspaceName}'s Workspace`,
+                slug,
+                plan: 'trial',
+                trialEndsAt,
+              })
+              .returning()
+
+            logger.info({
+              event: 'workspace.provisioned',
+              workspaceId: workspace.id,
+              slug: workspace.slug,
+              email: userData.email,
+            })
+
+            return {
+              data: {
+                ...userData,
+                workspaceId: workspace.id,
+                role: 'owner',
+              },
+            }
+          },
+        },
       },
     },
   }

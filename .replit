@@ -52,9 +52,3 @@ externalPort = 3001
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[userenv]
-
-[userenv.shared]
-BETTER_AUTH_URL = "http://localhost:3001"
-REDIS_URL = "redis://localhost:6379"
