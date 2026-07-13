@@ -1,0 +1,36 @@
+{
+  "name": "@ai-sales-os/plugins",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./interfaces": {
+      "import": "./dist/interfaces/index.js",
+      "types": "./dist/interfaces/index.d.ts"
+    },
+    "./registry": {
+      "import": "./dist/registry/index.js",
+      "types": "./dist/registry/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@ai-sales-os/logger": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  }
+}

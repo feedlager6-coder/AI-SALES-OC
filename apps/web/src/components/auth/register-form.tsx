@@ -1,0 +1,142 @@
+'use client'
+
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { authClient } from '@/lib/auth-client'
+
+const registerSchema = z.object({
+  name: z.string().min(2, 'Минимум 2 символа'),
+  email: z.string().email('Введите корректный email'),
+  password: z.string().min(8, 'Минимум 8 символов'),
+  workspaceName: z.string().min(2, 'Минимум 2 символа'),
+})
+
+type RegisterFormData = z.infer<typeof registerSchema>
+
+export function RegisterForm() {
+  const router = useRouter()
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+  })
+
+  const onSubmit = async (data: RegisterFormData) => {
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      await authClient.signUp.email({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+      })
+      router.push('/dashboard')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка регистрации. Попробуйте снова.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {error && (
+        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      <div>
+        <label htmlFor="name" className="block text-sm font-medium text-foreground mb-1">
+          Ваше имя
+        </label>
+        <input
+          id="name"
+          type="text"
+          autoComplete="name"
+          {...register('name')}
+          className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder="Иван Петров"
+        />
+        {errors.name && (
+          <p className="mt-1 text-xs text-destructive">{errors.name.message}</p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="workspaceName" className="block text-sm font-medium text-foreground mb-1">
+          Название компании
+        </label>
+        <input
+          id="workspaceName"
+          type="text"
+          {...register('workspaceName')}
+          className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder="ООО Ромашка"
+        />
+        {errors.workspaceName && (
+          <p className="mt-1 text-xs text-destructive">{errors.workspaceName.message}</p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1">
+          Email
+        </label>
+        <input
+          id="email"
+          type="email"
+          autoComplete="email"
+          {...register('email')}
+          className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder="you@company.com"
+        />
+        {errors.email && (
+          <p className="mt-1 text-xs text-destructive">{errors.email.message}</p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1">
+          Пароль
+        </label>
+        <input
+          id="password"
+          type="password"
+          autoComplete="new-password"
+          {...register('password')}
+          className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder="••••••••"
+        />
+        {errors.password && (
+          <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>
+        )}
+      </div>
+
+      <button
+        type="submit"
+        disabled={isLoading}
+        className="w-full rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+      >
+        {isLoading ? 'Создание аккаунта...' : 'Создать аккаунт'}
+      </button>
+
+      <p className="text-center text-sm text-muted-foreground">
+        Уже есть аккаунт?{' '}
+        <Link href="/login" className="font-medium text-primary hover:underline">
+          Войти
+        </Link>
+      </p>
+    </form>
+  )
+}

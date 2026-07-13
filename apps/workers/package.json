@@ -1,0 +1,30 @@
+{
+  "name": "@ai-sales-os/workers",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@ai-sales-os/config": "workspace:*",
+    "@ai-sales-os/db": "workspace:*",
+    "@ai-sales-os/errors": "workspace:*",
+    "@ai-sales-os/logger": "workspace:*",
+    "@ai-sales-os/plugins": "workspace:*",
+    "@ai-sales-os/queue": "workspace:*",
+    "@ai-sales-os/types": "workspace:*",
+    "bullmq": "^5.53.0",
+    "drizzle-orm": "^0.45.2",
+    "ioredis": "^5.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

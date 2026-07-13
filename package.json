@@ -1,0 +1,35 @@
+{
+  "name": "ai-sales-os",
+  "version": "0.0.1",
+  "private": true,
+  "description": "AI-powered B2B sales automation platform",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "packageManager": "pnpm@10.26.1",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:generate": "turbo run db:generate --filter=@ai-sales-os/db",
+    "db:migrate": "turbo run db:migrate --filter=@ai-sales-os/db",
+    "db:studio": "turbo run db:studio --filter=@ai-sales-os/db",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "prettier": "^3.9.5",
+    "turbo": "^2.10.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "ioredis": "5.11.1"
+    }
+  }
+}

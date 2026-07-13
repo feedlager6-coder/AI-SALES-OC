@@ -1,0 +1,7 @@
+export type { ILeadSourcePlugin, LeadSearchParams, LeadSearchResult, RawCompanyData } from './lead-source.interface.js'
+export type { IEmailFinderPlugin, EmailFinderParams, EmailFinderResult } from './email-finder.interface.js'
+export type { ICompanyDataPlugin, CompanyDataParams, CompanyDataResult } from './company-data.interface.js'
+export type { IEmailSendingPlugin, SendEmailParams, SendEmailResult, EmailWebhookEvent } from './email-sending.interface.js'
+export type { ILLMPlugin, LLMMessage, LLMCallParams, LLMCallResult } from './llm.interface.js'
+export type { INotificationPlugin, NotificationPayload } from './notification.interface.js'
+export type { IStoragePlugin } from './storage.interface.js'

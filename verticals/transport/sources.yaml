@@ -1,0 +1,37 @@
+# Lead source configuration for Transport vertical
+
+vertical: transport
+
+lead_sources:
+  - plugin: 2gis
+    priority: 1
+    search_params:
+      rubrics:
+        - transport
+        - logistics
+        - courier
+        - cargo
+        - freight_forwarding
+
+  - plugin: hhru
+    priority: 2
+    search_params:
+      industries:
+        - transport
+        - supply_chain
+        - logistics
+
+enrichment:
+  email_finder:
+    - plugin: hunter
+      priority: 1
+    - plugin: snov
+      priority: 2
+    - plugin: pattern
+      priority: 99
+
+  company_data:
+    - plugin: dadata
+      priority: 1
+    - plugin: egrul
+      priority: 2

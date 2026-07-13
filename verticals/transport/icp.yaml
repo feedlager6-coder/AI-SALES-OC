@@ -1,0 +1,47 @@
+# ICP Scoring Rules — Transport Vertical
+# Version: 1.0
+# Score range: 0–100. Qualified if score >= 50.
+
+vertical: transport
+version: "1.0"
+
+rules:
+  - field: industry
+    match: [transport, logistics, courier, freight, supply_chain, forwarding]
+    weight: 25
+
+  - field: employees_count
+    range_match:
+      min_inclusive: "10-50"
+      max_inclusive: "1000+"
+    weight: 20
+
+  - field: city
+    in_list:
+      - "Москва"
+      - "Санкт-Петербург"
+      - "Екатеринбург"
+      - "Новосибирск"
+      - "Казань"
+      - "Нижний Новгород"
+      - "Самара"
+      - "Ростов-на-Дону"
+      - "Краснодар"
+    weight: 10
+
+  - field: has_open_vacancies
+    condition: true
+    weight: 15
+
+  - field: email_found
+    condition: true
+    weight: 10
+
+  - field: revenue_rub
+    min: 50_000_000
+    weight: 20
+
+thresholds:
+  qualified: 50      # Score >= 50: add to outreach
+  high_quality: 75   # Score >= 75: priority outreach
+  reject: 30         # Score < 30: mark as low_quality
