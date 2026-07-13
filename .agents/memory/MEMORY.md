@@ -1,1 +1,1 @@
-- [AI Sales OS Architecture](ai-sales-os-arch.md) — Phase 0 complete; no prod code yet; monorepo+Plugin+Event-driven; Company not Lead is the core entity
+- [AI Sales OS Architecture](ai-sales-os-arch.md) — Sprint 1.1 running on Replit; monorepo+Plugin+Event-driven; Company not Lead; Replit port-proxy & Better Auth gotchas

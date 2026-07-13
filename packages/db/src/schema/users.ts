@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   bigint,
+  boolean,
   pgEnum,
   uniqueIndex,
   index,
@@ -23,6 +24,7 @@ export const users = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     email: varchar('email', { length: 255 }).notNull(),
+    emailVerified: boolean('email_verified').notNull().default(false),
     name: varchar('name', { length: 255 }),
     role: userRoleEnum('role').notNull().default('sdr'),
     avatarUrl: text('avatar_url'),

@@ -34,15 +34,22 @@ cd apps/web && pnpm dev --port 5000
 cd apps/api && pnpm dev
 ```
 
-## Required Secrets (not yet configured)
+## Environment Status (configured 2026-07-13)
 
-Add these in Replit Secrets before the API can work:
-- `DATABASE_URL` — PostgreSQL connection string
-- `REDIS_URL` — Redis connection string  
-- `BETTER_AUTH_SECRET` — min 32 characters
-- `ENCRYPTION_KEY` — 64-char hex string
-- `BETTER_AUTH_URL` — full URL of the API server
+- `DATABASE_URL` — ✅ Replit's built-in PostgreSQL (migrations applied)
+- `REDIS_URL` — ✅ `redis://localhost:6379`; a local `redis-server` is started by the "API Server" workflow itself (no separate Redis service on Replit)
+- `BETTER_AUTH_SECRET` / `ENCRYPTION_KEY` — ✅ generated and stored as shared env vars
+- `BETTER_AUTH_URL` — ✅ `http://localhost:3001` (internal; browser never calls the API origin directly, see below)
 - `SESSION_SECRET` — ✅ already configured
+- Optional external API keys (`OPENAI_API_KEY`, `MAILGUN_API_KEY`, `TWOGIS_API_KEY`, etc.) are still unset — add via Replit Secrets when those integrations are built.
+
+### Replit networking note
+
+Only port 5000 is publicly reachable, so the browser must never call the Fastify API (port 3001) directly. `apps/web/next.config.ts` rewrites `/api/*` to `http://localhost:3001/api/*`, and `NEXT_PUBLIC_API_URL` is set to `""` (relative) for the web workflow only — this keeps the app on a single origin and avoids cross-port cookie/CORS issues. Do not reintroduce an absolute `NEXT_PUBLIC_API_URL` pointing at port 3001.
+
+### Known gap (tracked as a follow-up task)
+
+Registration (`POST /api/auth/sign-up/email`) fails with a `workspace_id` NOT NULL violation — `users.workspaceId` is required but Better Auth has no workspace to assign at signup. This is the "workspace provisioning" hook already called out in `AI_HANDOFF.md` as Sprint 1.2 work, not a Sprint 1.1 regression.
 
 ## User Preferences
 

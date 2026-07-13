@@ -1,7 +1,18 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** Sprint 1.1 complete (2026-07-13)
-> **Next sprint:** Sprint 1.2 — Database migrations, auth workspace provisioning, companies list UI
+> **Last updated:** Sprint 1.1 complete + running on Replit (2026-07-13)
+> **Next sprint:** Sprint 1.2 — Auth workspace provisioning, companies list UI
+
+## Replit Setup — Completed 2026-07-13
+
+The project is now installed and running on Replit (`pnpm install`, packages built, DB migrated, Redis running locally). Two Sprint 1.1 bugs surfaced and were fixed while verifying registration end-to-end:
+
+1. **`users` schema was missing `emailVerified`** — Better Auth's Drizzle adapter requires this column on the user table; added `email_verified boolean not null default false` (see `packages/db/src/schema/users.ts`, migration `0001_silly_joystick.sql`).
+2. **Better Auth generated non-UUID IDs** — by default Better Auth generates its own string IDs, which don't fit our `uuid` primary key columns (`id uuid default gen_random_uuid()`). Fixed by setting `advanced.database.generateId: false` in `apps/api/src/plugins/auth.ts`, so the database generates IDs instead.
+
+See `replit.md` → "Environment Status" for the full secrets/Redis/networking setup, including the `/api/*` rewrite proxy required because Replit only exposes one public port.
+
+**Still open (Sprint 1.2, not a regression):** signup fails on `users.workspace_id NOT NULL` because there's no post-registration hook yet to create/assign a workspace. This was already flagged below under "Workspace provisioning" — confirmed still accurate.
 
 ---
 

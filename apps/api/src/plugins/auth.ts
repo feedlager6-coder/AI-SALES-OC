@@ -45,6 +45,14 @@ export function getAuth(): AuthInstance {
       },
     },
     trustedOrigins: [env.BETTER_AUTH_URL],
+    // Our schema generates IDs at the DB level (uuid default gen_random_uuid()).
+    // Without this, Better Auth generates its own non-UUID string IDs, which
+    // fail to insert into the uuid-typed primary key columns.
+    advanced: {
+      database: {
+        generateId: false,
+      },
+    },
   }
 
   _auth = betterAuth(options)

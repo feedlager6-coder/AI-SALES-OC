@@ -35,8 +35,18 @@ All business entities (Company, Contact, Deal, Campaign) use `deleted_at TIMESTA
 
 **Why:** Preserves audit trail, prevents cascade data loss, needed for compliance.
 
-## Phase 0 Complete — No Production Code Yet
-As of 2025-07, only documentation exists. The next step is Sprint 1.1: monorepo setup, Docker Compose, Drizzle schema, Fastify boilerplate, JWT auth.
+## Sprint 1.1 Complete, Running on Replit (as of 2026-07-13)
+Monorepo (pnpm+Turborepo), Drizzle schema, Fastify API, Next.js web, BullMQ workers all build/typecheck/lint clean and run on Replit. Next milestone: Sprint 1.2 (CRM core + workspace provisioning) — see project tasks.
+
+## Replit Runtime Setup
+No Docker/external Redis on Replit: `redis-server` is started inline by the "API Server" workflow command itself (system dep installed via nix). Only port 5000 is public — Next.js proxies `/api/*` to the internal Fastify server (port 3001) via `rewrites()` in `next.config.ts`, with `NEXT_PUBLIC_API_URL=""` set only for the web workflow (not shared, since the API's zod env schema requires a valid URL and rejects empty string).
+
+**Why:** Browsers can't reach non-public ports on `*.replit.dev`; same-origin proxying avoids cross-port CORS/cookie issues entirely.
+
+## Better Auth + Drizzle Adapter Gotchas
+Two fixes were needed to make Better Auth's Drizzle adapter work with our schema: (1) `users` table needs an explicit `emailVerified` boolean column — Better Auth's adapter hard-requires it even though the docs don't call it out clearly. (2) Set `advanced.database.generateId: false` in `betterAuth()` options when your ID columns are `uuid` with a DB-side default (`gen_random_uuid()`) — otherwise Better Auth generates its own non-UUID string IDs and inserts fail.
+
+**How to apply:** Any new Better-Auth-backed entity table (if the pattern is reused) needs the same `emailVerified`-style required-field check against the adapter's expectations, and the same uuid/generateId setting.
 
 ## Architecture Audit Readiness Score
 Before audit: 42/100. After documentation round: 81/100. Remaining gaps documented in `docs/00-audit-report.md`.
