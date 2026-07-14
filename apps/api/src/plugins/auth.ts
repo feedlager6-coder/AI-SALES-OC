@@ -65,8 +65,29 @@ export function getAuth(): AuthInstance {
         maxAge: 60 * 5, // Cache session for 5 min
       },
     },
+    // Declare custom user fields so Better Auth passes them to the DB on INSERT.
+    // Without this, fields injected by databaseHooks.user.create.before are silently dropped.
+    user: {
+      additionalFields: {
+        workspaceId: {
+          type: 'string',
+          required: false, // injected server-side by databaseHooks.user.create.before
+          fieldName: 'workspaceId', // must match the Drizzle schema object key (camelCase)
+        },
+        role: {
+          type: 'string',
+          required: false,
+          defaultValue: 'member',
+          fieldName: 'role',
+        },
+      },
+    },
     trustedOrigins: [
       env.BETTER_AUTH_URL,
+      // Trust local dev origins
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:5000',
       // Trust Replit preview proxy domains in all environments
       ...(process.env.REPLIT_DEV_DOMAIN
         ? [`https://${process.env.REPLIT_DEV_DOMAIN}`]
