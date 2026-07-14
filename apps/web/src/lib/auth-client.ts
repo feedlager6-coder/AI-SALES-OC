@@ -1,7 +1,10 @@
 import { createAuthClient } from 'better-auth/react'
 
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
+  // Empty string → relative URLs → Next.js rewrites /api/* → localhost:3001.
+  // Must use ?? (not ||) so an empty NEXT_PUBLIC_API_URL stays empty and
+  // requests stay same-origin through the Next.js proxy.
+  baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
 })
 
 // Re-export named helpers with explicit types to avoid non-portable inferred types
