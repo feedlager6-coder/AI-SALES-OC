@@ -176,13 +176,13 @@ export const sequencesRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() }
-    if (body.name !== undefined) updates.name = body.name
-    if (body.steps !== undefined) updates.steps = body.steps
-
     const [updated] = await db
       .update(sequences)
-      .set(updates as Parameters<ReturnType<typeof db.update>['set']>[0])
+      .set({
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.steps !== undefined ? { steps: body.steps } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(sequences.id, id))
       .returning()
 

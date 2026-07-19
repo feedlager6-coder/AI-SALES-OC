@@ -15,7 +15,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, eq, desc, count } from 'drizzle-orm'
+import { and, eq, desc, count, inArray } from 'drizzle-orm'
 import {
   getDb,
   campaigns,
@@ -333,7 +333,6 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const seqIds = seqs.map((s) => s.id)
-    const { inArray } = await import('drizzle-orm')
 
     const conditions = [
       inArray(sequenceEnrollments.sequenceId, seqIds),

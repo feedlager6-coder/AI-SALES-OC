@@ -5,6 +5,36 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## Sprint 1.4 — Email Sequences & Outreach Automation (2026-07-19)
+
+### New Features
+- **Campaigns API** — Full CRUD + lifecycle (`/api/campaigns`): `draft → active → paused → active → completed → archived`. Includes enrollment endpoint (`POST /api/campaigns/:id/enroll`) that deduplicates by unique constraint. Stats JSONB field tracks enrolled/sent/opened/clicked/replied/meetings.
+- **Sequences API** — Multi-step email sequence builder (`/api/sequences`). Steps stored as JSONB with `email` and `wait` types. Step-number uniqueness validated on create and update. Sequences are scoped to a campaign.
+- **Email accounts API** — SMTP/Mailgun/Brevo/SES account management (`/api/email-accounts`). AES-256-GCM credential encryption at rest. Credentials never returned in GET responses.
+- **Email sending worker** — `apps/workers/src/email/email.worker.ts`. Processes `SEND_EMAIL` and `SCHEDULE_SEQUENCE_STEP` jobs. Redis INCR counter enforces daily send limits atomically (RISK-001). Schedules next sequence step with BullMQ delay. Marks enrollment completed/stopped/bounced on terminal events.
+- **Mailgun webhook handler** — `POST /api/webhooks/mailgun`. Validates provider signature. Updates `email_sends` on delivered/opened/clicked/bounced/complained/unsubscribed events. Hard bounce marks company as `opted_out` and enrollment as `bounced`.
+- **Campaigns UI** — `/campaigns` page with status filter tabs (All/Active/Draft/Paused/Completed), campaign cards with stats grid, action buttons (start/pause/stop), and "Новая кампания" creation modal.
+- **API client extended** — `apps/web/src/lib/api-client.ts` now covers `campaigns`, `sequences`, and `emailAccounts` namespaces with full TypeScript types.
+- **Outreach DB schema** — `packages/db/src/schema/outreach.ts`: `campaigns`, `sequences`, `sequence_enrollments`, `email_sends`, `email_accounts` tables with enums. Indexes for workspace isolation, status filtering, and provider event lookup. Schema included in initial migration.
+
+### Code Quality Fixes (Sprint 1.4 review)
+- **`campaigns.ts`**: Replaced dynamic `await import('drizzle-orm')` for `inArray` with a static top-level import.
+- **`sequences.ts`**: Removed `Record<string, unknown>` type cast in PATCH route; replaced with a properly-typed Drizzle spread object.
+- **`webhooks.ts`**: Typed the `updates` accumulator as `Partial<EmailSend>` (imported from `@ai-sales-os/db`) instead of `Record<string, unknown>`, eliminating the unsafe `as Parameters<...>[0]` cast.
+
+### Testing
+- **API test infrastructure** — Added `vitest` to `apps/api`, `apps/api/vitest.config.ts`, and `apps/api/tests/helpers.ts` (shared Fastify test app with production-matching error handler).
+- **`campaigns.test.ts`** — 17 tests covering campaign lifecycle state machine: start/pause/stop/delete/patch/enroll validation. Guards against invalid state transitions (e.g. start completed, pause non-active, delete active).
+- **`sequences.test.ts`** — 9 tests covering sequence creation and update: step-number uniqueness, campaign ownership validation, CRUD.
+- All 26 API tests pass.
+
+### Internal
+- All TypeScript strict checks pass — zero errors across all apps and packages
+- ESLint zero warnings across all apps
+- All 10 build tasks pass (packages + apps)
+
+---
+
 ## Sprint 1.3 — Lead Generation (2026-07-13)
 
 ### New Features

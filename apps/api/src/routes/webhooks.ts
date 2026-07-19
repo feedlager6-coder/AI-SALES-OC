@@ -6,7 +6,7 @@
  * POST /api/webhooks/mailgun
  */
 import type { FastifyPluginAsync } from 'fastify'
-import { getDb, emailSends, sequenceEnrollments, companies } from '@ai-sales-os/db'
+import { getDb, emailSends, sequenceEnrollments, companies, type EmailSend } from '@ai-sales-os/db'
 import { eq } from 'drizzle-orm'
 import { createLogger } from '@ai-sales-os/logger'
 import { registry } from '@ai-sales-os/plugins'
@@ -74,7 +74,7 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Update email send based on event type
-    const updates: Record<string, unknown> = {}
+    const updates: Partial<EmailSend> = {}
 
     switch (event) {
       case 'delivered':
@@ -111,7 +111,7 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
     }
 
     if (Object.keys(updates).length > 0) {
-      await db.update(emailSends).set(updates as Parameters<ReturnType<typeof db.update>['set']>[0]).where(eq(emailSends.id, send.id))
+      await db.update(emailSends).set(updates).where(eq(emailSends.id, send.id))
     }
 
     // Update enrollment status for terminal events

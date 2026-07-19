@@ -1,13 +1,13 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** Sprint 1.3 complete (2026-07-13)
-> **Next sprint:** Sprint 1.4 — Email sequences & outreach automation
+> **Last updated:** Sprint 1.4 complete (2026-07-19)
+> **Next sprint:** Sprint 1.5 — AI email generation & reply classification
 
 ---
 
 ## Replit Setup — Completed 2026-07-13
 
-The project is installed and running on Replit. All Sprint 1.1, 1.2, and 1.3 work is complete:
+The project is installed and running on Replit. All Sprint 1.1, 1.2, 1.3, and 1.4 work is complete:
 
 - `pnpm install` done, all packages build clean
 - DB migrated (migrations `0000_supreme_donald_blake.sql` + `0001_silly_joystick.sql` applied)
@@ -135,15 +135,36 @@ ai-sales-os/
 
 ---
 
-## Sprint 1.4 — What to do next
+## Sprint 1.4 Status — ✅ COMPLETE
+
+### Completed
+- [x] **Campaigns API** — Full CRUD + lifecycle state machine (`draft → active → paused → completed → archived`) at `/api/campaigns`. Enrollment endpoint enrolls companies into a sequence, deduplicating by unique constraint. `stats` JSONB field tracks enrolled/sent/opened/clicked/replied/meetings.
+- [x] **Sequences API** — `/api/sequences`. Steps stored as JSONB (`email` + `wait` types). Step-number uniqueness validated on create and update. Scoped to campaign with ownership check.
+- [x] **Email accounts API** — `/api/email-accounts`. AES-256-GCM credential encryption. Credentials never included in GET responses. Requires `ENCRYPTION_KEY` env var (64 hex chars).
+- [x] **Email sending worker** — `apps/workers/src/email/email.worker.ts`. Processes `SEND_EMAIL` and `SCHEDULE_SEQUENCE_STEP` BullMQ jobs. Redis INCR enforces daily send limits atomically (RISK-001). Auto-schedules next step with delay. Terminal events (bounce/unsubscribe) update enrollment status.
+- [x] **Webhook handler** — `POST /api/webhooks/mailgun`. Validates Mailgun signature. Updates `email_sends` on delivered/opened/clicked/bounced/complained/unsubscribed. Hard bounce → company `opted_out`.
+- [x] **Campaigns UI** — `/campaigns` page with status filter tabs, campaign cards (stats grid, action buttons), and create modal.
+- [x] **Outreach DB schema** — `packages/db/src/schema/outreach.ts`: `campaigns`, `sequences`, `sequence_enrollments`, `email_sends`, `email_accounts`. Covered by initial migration `0000_supreme_donald_blake.sql`.
+- [x] **API client** — `emailAccounts`, `campaigns`, `sequences` namespaces with full TypeScript types.
+- [x] **API tests** — `apps/api/tests/routes/campaigns.test.ts` (17 tests) + `sequences.test.ts` (9 tests). 26/26 pass.
+
+### Code quality fixes applied in Sprint 1.4 review
+- `campaigns.ts`: `inArray` moved from dynamic `await import()` to static top-level import
+- `sequences.ts`: Removed `Record<string, unknown>` cast in PATCH `.set()`; replaced with typed Drizzle spread
+- `webhooks.ts`: `updates` typed as `Partial<EmailSend>` (imported from `@ai-sales-os/db`); unsafe cast removed
+
+### New env vars required
+- `ENCRYPTION_KEY` — 64 hex characters (32 bytes), required for email account credential encryption
+
+---
+
+## Sprint 1.5 — What to do next
 
 ### Critical path
-1. **Email sequence builder** — Compose multi-step email sequences with delay rules, A/B variants, stop conditions
-2. **Outreach sending** — Integrate email sending (SMTP / SendGrid / Postmark). Queue-based delivery. Respect daily send limits.
-3. **Sequence status tracking** — Track open, click, reply, bounce events per contact per sequence
-4. **Sequence UI** — `/sequences` page with builder, active campaign dashboard, per-lead status
-- `HUNTER_API_KEY`
-- `SNOV_API_KEY`
+1. **AI email writer** — Generate personalised email body + subject per enrollment step using company data + vertical prompts (`packages/ai/agents/writer`). Hook into `GENERATE_EMAIL` BullMQ job (stub already in `apps/workers/src/ai/ai.worker.ts`).
+2. **Reply classifier** — Classify inbound replies (interested / not_now / not_interested / out_of_office). Hook into `CLASSIFY_REPLY` job. Update `sequence_enrollments.replyClassification`. Stop sequence on reply if `stopOnReply = true`.
+3. **Sequence detail UI** — `/sequences/:id` builder page: drag-and-drop step editor, per-step preview. Show enrollment list and per-step stats.
+4. **Campaign analytics** — Dashboard stats panel showing campaign funnel (enrolled → sent → opened → replied → meeting).
 
 ---
 
