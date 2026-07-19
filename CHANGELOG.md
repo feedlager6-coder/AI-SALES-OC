@@ -5,6 +5,37 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## Post-Sprint 1.4 QA & Audit (2026-07-19)
+
+### Bug Fixes
+- **Register form** — `workspaceName` field was collected from the user but silently dropped before the Better Auth `signUp.email()` call. Added `workspaceName` to `user.additionalFields` in `apps/api/src/plugins/auth.ts` and passed it from `register-form.tsx`. Workspace is now named with the value entered by the user directly (removed the `"name's Workspace"` suffix pattern).
+- **`next.config.ts`** — `127.0.0.1` was missing from `allowedDevOrigins`, causing HMR WebSocket failures when accessing the app through the local IP (screenshot tooling, Replit preview iframe).
+
+### Audit Findings (no code changes — tracked as future work)
+Full audit documented in `AI_HANDOFF.md`. Summary of critical items:
+
+| ID | Severity | Issue |
+|----|----------|-------|
+| BUG-001 | HIGH | `ZodError` not caught by Fastify error handler → all validation failures return 500 with stack trace instead of 400 |
+| BUG-002 | HIGH UX | Dashboard StatCards hardcoded to `"0"` — no API calls, real data never shown |
+| BUG-003 | MEDIUM perf | `POST /api/companies/import` runs N+1 queries (findFirst in loop for INN/domain dedup) |
+| BUG-004 | MEDIUM sec | No rate limiting on any endpoint, including auth |
+| TD-001 | MEDIUM | `campaigns`, `sequences`, `tasks`, `email_accounts` have no soft-delete (`deletedAt`) |
+| TD-002 | MEDIUM perf | Missing indexes on `sequences.campaign_id`, `sequence_enrollments.sequence_id`, `email_sends.contact_id` |
+| TD-003 | LOW | ICP scoring logic duplicated in `apps/api` and `apps/workers` |
+
+### Pages verified (manual QA)
+- `/login`, `/register` — ✅ working
+- `/dashboard` — ✅ renders, stats hardcoded to 0
+- `/companies` — ✅ fully functional with real data
+- `/companies/:id` — ✅ fully functional (contacts, timeline, ICP, enrich)
+- `/campaigns` — ✅ fully functional with real data
+- `/settings` — ✅ email accounts CRUD, encryption working
+- `/contacts` — ❌ stub ("Раздел в разработке")
+- `/analytics` — ❌ stub ("Раздел в разработке")
+
+---
+
 ## Sprint 1.4 — Email Sequences & Outreach Automation (2026-07-19)
 
 ### New Features
