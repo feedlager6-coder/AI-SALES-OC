@@ -38,6 +38,8 @@ export function RegisterForm() {
       name: data.name,
       email: data.email,
       password: data.password,
+      // @ts-expect-error — workspaceName is a registered additionalField on the server
+      workspaceName: data.workspaceName,
     })
 
     setIsLoading(false)

@@ -9,8 +9,9 @@ const replitDevOrigins = [
 ].filter((origin): origin is string => Boolean(origin))
 
 const nextConfig: NextConfig = {
-  // Allow requests from the Replit preview proxy host
-  allowedDevOrigins: replitDevOrigins.length > 0 ? replitDevOrigins : ['*'],
+  // Allow requests from the Replit preview proxy host and local IP (screenshot tooling)
+  allowedDevOrigins:
+    replitDevOrigins.length > 0 ? [...replitDevOrigins, '127.0.0.1'] : ['*'],
   serverExternalPackages: [],
   images: {
     domains: [],

@@ -80,6 +80,13 @@ export function getAuth(): AuthInstance {
           defaultValue: 'member',
           fieldName: 'role',
         },
+        // Passed from the register form so the first workspace gets a meaningful name
+        workspaceName: {
+          type: 'string',
+          required: false,
+          fieldName: 'workspaceName',
+          returned: false, // don't expose in session/user responses
+        },
       },
     },
     trustedOrigins: [
@@ -117,14 +124,15 @@ export function getAuth(): AuthInstance {
             trialEndsAt.setDate(trialEndsAt.getDate() + 14)
 
             const slug = deriveWorkspaceSlug(userData.email as string)
-            const workspaceName =
+            const displayName =
+              (userData.workspaceName as string | undefined)?.trim() ||
               (userData.name as string | undefined)?.trim() ||
               (userData.email as string).split('@')[0]
 
             const [workspace] = await db
               .insert(workspaces)
               .values({
-                name: `${workspaceName}'s Workspace`,
+                name: displayName,
                 slug,
                 plan: 'trial',
                 trialEndsAt,

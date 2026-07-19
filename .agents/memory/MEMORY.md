@@ -1,2 +1,3 @@
 - [AI Sales OS Architecture](ai-sales-os-arch.md) — Sprint 1.1 running on Replit; monorepo+Plugin+Event-driven; Company not Lead; Replit port-proxy & Better Auth gotchas
 - [AI Sales OS Auth quirks](ai-sales-os-auth.md) — Better Auth+Drizzle custom fields need additionalFields; React client returns {data,error} not throws; trustedOrigins; DB migration on fresh env
+- [AI Sales OS environment setup](ai-sales-os-env-setup.md) — Required secrets, DB migration cmd, dev bypass, test credentials, bugs fixed on first run

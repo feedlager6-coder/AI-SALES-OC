@@ -1,13 +1,21 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/register', '/api/auth']
+const PUBLIC_PATHS = ['/login', '/register', '/api/auth', '/dev-preview']
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Allow public paths through
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next()
+  }
+
+  // DEV-ONLY: allow bypass with ?_dev=1 for screenshot tooling
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    request.nextUrl.searchParams.get('_dev') === '1'
+  ) {
     return NextResponse.next()
   }
 
