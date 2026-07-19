@@ -13,6 +13,10 @@ import { companiesRoutes } from './routes/companies.js'
 import { contactsRoutes } from './routes/contacts.js'
 import { dealsRoutes } from './routes/deals.js'
 import { leadSourcesRoutes } from './routes/lead-sources.js'
+import { emailAccountsRoutes } from './routes/email-accounts.js'
+import { campaignsRoutes } from './routes/campaigns.js'
+import { sequencesRoutes } from './routes/sequences.js'
+import { webhooksRoutes } from './routes/webhooks.js'
 
 const logger = createLogger({ name: 'api:app' })
 
@@ -110,6 +114,10 @@ export async function buildApp() {
   await app.register(contactsRoutes, { prefix: '/api/contacts' })
   await app.register(dealsRoutes, { prefix: '/api/deals' })
   await app.register(leadSourcesRoutes, { prefix: '/api/lead-sources' })
+  await app.register(emailAccountsRoutes, { prefix: '/api/email-accounts' })
+  await app.register(campaignsRoutes, { prefix: '/api/campaigns' })
+  await app.register(sequencesRoutes, { prefix: '/api/sequences' })
+  await app.register(webhooksRoutes, { prefix: '/api/webhooks' })
 
   return app
 }

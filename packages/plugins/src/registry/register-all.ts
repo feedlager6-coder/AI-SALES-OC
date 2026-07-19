@@ -21,6 +21,9 @@ import { PatternEmailFinderPlugin } from '../implementations/enrichment/pattern-
 import { DadataPlugin } from '../implementations/enrichment/dadata.provider.js'
 import { EgrulPlugin } from '../implementations/enrichment/egrul.js'
 
+// ── Email Sending plugins ─────────────────────────────────────────────────────
+import { MailgunPlugin } from '../implementations/email/mailgun.provider.js'
+
 export function registerAllPlugins(): void {
   // ── Lead Sources ──────────────────────────────────────────────────────────
   // Priority 1: 2ГИС (richest data for Russian B2B)
@@ -43,4 +46,8 @@ export function registerAllPlugins(): void {
   registry.register({ plugin: new DadataPlugin(), category: 'company_data', priority: 1, enabled: true })
   // Priority 2: ЕГРЮЛ nalog.ru (free, limited data)
   registry.register({ plugin: new EgrulPlugin(), category: 'company_data', priority: 2, enabled: true })
+
+  // ── Email Sending ─────────────────────────────────────────────────────────
+  // Priority 1: Mailgun (primary transactional email provider)
+  registry.register({ plugin: new MailgunPlugin(), category: 'email_sending', priority: 1, enabled: true })
 }

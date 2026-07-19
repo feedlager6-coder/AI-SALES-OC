@@ -362,8 +362,216 @@ export const api = {
       ),
   },
 
+  // Email Accounts (Sprint 1.4)
+  emailAccounts: {
+    list: () => request<{ data: EmailAccount[] }>('/api/email-accounts'),
+    get: (id: string) => request<{ data: EmailAccount }>(`/api/email-accounts/${id}`),
+    create: (body: CreateEmailAccountBody) =>
+      request<{ data: EmailAccount }>('/api/email-accounts', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: { displayName?: string; dailyLimit?: number; isActive?: boolean; credentials?: CreateEmailAccountBody['credentials'] }) =>
+      request<{ data: EmailAccount }>(`/api/email-accounts/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) => request<void>(`/api/email-accounts/${id}`, { method: 'DELETE' }),
+  },
+
+  // Campaigns (Sprint 1.4)
+  campaigns: {
+    list: (filters?: CampaignFilters) => {
+      const params = new URLSearchParams()
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v !== undefined && v !== '') params.set(k, String(v))
+        })
+      }
+      const qs = params.toString()
+      return request<PagedResponse<Campaign>>(`/api/campaigns${qs ? `?${qs}` : ''}`)
+    },
+    get: (id: string) => request<{ data: Campaign & { sequences: Sequence[] } }>(`/api/campaigns/${id}`),
+    create: (body: CreateCampaignBody) =>
+      request<{ data: Campaign }>('/api/campaigns', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: Partial<CreateCampaignBody>) =>
+      request<{ data: Campaign }>(`/api/campaigns/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) => request<void>(`/api/campaigns/${id}`, { method: 'DELETE' }),
+    start: (id: string) => request<{ data: Campaign }>(`/api/campaigns/${id}/start`, { method: 'POST' }),
+    pause: (id: string) => request<{ data: Campaign }>(`/api/campaigns/${id}/pause`, { method: 'POST' }),
+    stop: (id: string) => request<{ data: Campaign }>(`/api/campaigns/${id}/stop`, { method: 'POST' }),
+    enrollments: (id: string, filters?: { page?: number; limit?: number; status?: string }) => {
+      const params = new URLSearchParams()
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v !== undefined) params.set(k, String(v))
+        })
+      }
+      const qs = params.toString()
+      return request<PagedResponse<SequenceEnrollment>>(`/api/campaigns/${id}/enrollments${qs ? `?${qs}` : ''}`)
+    },
+    enroll: (id: string, body: { companyIds: string[]; sequenceId: string; contactId?: string }) =>
+      request<{ data: { enrolled: number; skipped: number; total: number } }>(`/api/campaigns/${id}/enroll`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  },
+
+  // Sequences (Sprint 1.4)
+  sequences: {
+    list: (filters?: { page?: number; limit?: number; campaignId?: string }) => {
+      const params = new URLSearchParams()
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v !== undefined) params.set(k, String(v))
+        })
+      }
+      const qs = params.toString()
+      return request<PagedResponse<Sequence>>(`/api/sequences${qs ? `?${qs}` : ''}`)
+    },
+    get: (id: string) => request<{ data: Sequence }>(`/api/sequences/${id}`),
+    create: (body: CreateSequenceBody) =>
+      request<{ data: Sequence }>('/api/sequences', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: Partial<CreateSequenceBody>) =>
+      request<{ data: Sequence }>(`/api/sequences/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) => request<void>(`/api/sequences/${id}`, { method: 'DELETE' }),
+  },
+
   // Workspace
   workspace: {
     me: () => request<{ data: { id: string; name: string; plan: string } }>('/api/workspaces/me'),
   },
+}
+
+// ─── Sprint 1.4 types ─────────────────────────────────────────────────────────
+
+export interface EmailAccount {
+  id: string
+  workspaceId: string
+  email: string
+  displayName: string | null
+  provider: 'mailgun' | 'brevo' | 'ses' | 'smtp'
+  dailyLimit: number
+  warmupStatus: string
+  reputationScore: number | null
+  isActive: boolean
+  createdAt: string
+}
+
+export interface CreateEmailAccountBody {
+  email: string
+  displayName?: string
+  provider: 'mailgun' | 'brevo' | 'ses' | 'smtp'
+  credentials: {
+    apiKey?: string
+    domain?: string
+    smtpHost?: string
+    smtpPort?: number
+    smtpUser?: string
+    smtpPassword?: string
+    smtpSecure?: boolean
+  }
+  dailyLimit?: number
+}
+
+export interface Campaign {
+  id: string
+  workspaceId: string
+  createdBy: string | null
+  name: string
+  status: 'draft' | 'active' | 'paused' | 'completed' | 'archived'
+  vertical: string | null
+  icpFilter: Record<string, unknown>
+  sendingSettings: {
+    days: number[]
+    time_from: string
+    time_to: string
+    timezone: string
+    daily_limit: number
+  }
+  stats: {
+    enrolled: number
+    sent: number
+    opened: number
+    clicked: number
+    replied: number
+    meetings: number
+  }
+  startedAt: string | null
+  endedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CampaignFilters {
+  page?: number
+  limit?: number
+  status?: string
+}
+
+export interface CreateCampaignBody {
+  name: string
+  vertical?: string
+  icpFilter?: Record<string, unknown>
+  sendingSettings?: {
+    days?: number[]
+    time_from?: string
+    time_to?: string
+    timezone?: string
+    daily_limit?: number
+  }
+}
+
+export interface SequenceStep {
+  stepNumber: number
+  type: 'email' | 'wait'
+  subject?: string
+  bodyHtml?: string
+  bodyText?: string
+  delayDays?: number
+  delayHours?: number
+  stopOnReply?: boolean
+  stopOnClick?: boolean
+}
+
+export interface Sequence {
+  id: string
+  workspaceId: string
+  campaignId: string | null
+  name: string
+  steps: SequenceStep[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateSequenceBody {
+  name: string
+  campaignId: string
+  steps: SequenceStep[]
+}
+
+export interface SequenceEnrollment {
+  id: string
+  workspaceId: string
+  sequenceId: string | null
+  companyId: string | null
+  contactId: string | null
+  status: 'active' | 'paused' | 'completed' | 'replied' | 'unsubscribed' | 'bounced' | 'stopped'
+  currentStep: number
+  enrolledAt: string
+  completedAt: string | null
+  replyAt: string | null
+  replyClassification: string | null
 }
