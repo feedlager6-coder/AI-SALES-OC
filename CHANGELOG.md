@@ -5,6 +5,48 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## Production-Ready Audit — Pre-Sprint 1.6 (2026-07-20, второй проход)
+
+Full E2E + security + performance + reliability audit. Found 6 bugs (2 P0, 4 P1). All fixed.
+
+### P0 — Blocking
+
+- **P0-01 — Enrollment UI полностью отсутствовал** (`apps/web/src/app/(dashboard)/campaigns/[id]/page.tsx`)
+  - API `POST /api/campaigns/:id/enroll` существовал и был типизирован, но ни один UI-компонент его не вызывал.
+  - Вкладка «Участники» говорила «Зачислите компании из раздела Компании», но такой функции там тоже не было.
+  - Весь outreach-поток был заблокирован: создать цепочку можно, запустить нельзя.
+  - Fix: добавлен `EnrollModal` — поиск компаний по названию, checkbox-выбор, выбор цепочки (если их несколько), кнопка зачисления. Кнопка «Зачислить компании» появляется в заголовке вкладки и на empty-state.
+
+- **P0-02 — Таблица участников показывала сырой UUID** (`apps/web/src/app/(dashboard)/campaigns/[id]/page.tsx`, `apps/api/src/routes/campaigns.ts`)
+  - `enr.companyId` (UUID вида `550e8400-e29b-41d4...`) отображался как имя участника — нечитаемо.
+  - Fix: GET `/api/campaigns/:id/enrollments` теперь делает LEFT JOIN с таблицей `companies` и возвращает `companyName`; таблица показывает название с кликабельной ссылкой на карточку компании. Тип `SequenceEnrollment` в api-client обновлён.
+
+### P1 — Серьёзные ошибки
+
+- **P1-01 — Webhook: обновление статуса компании без workspace-фильтра** (`apps/api/src/routes/webhooks.ts`)
+  - При hard bounce: `UPDATE companies SET status='opted_out' WHERE id=?` — без `workspaceId`. Подписанный webhook мог изменить компанию из другого workspace через известный `companyId`.
+  - Fix: добавлен `and(eq(companies.id, ...), eq(companies.workspaceId, send.workspaceId))`.
+
+- **P1-02 — Webhook N+1: повторный запрос enrollment** (`apps/api/src/routes/webhooks.ts`)
+  - Обработчик hard bounce обновлял `sequenceEnrollments` по `enrollmentId`, а затем снова делал `findFirst` на тот же `enrollmentId` чтобы получить `companyId` — 3 запроса вместо 2.
+  - Fix: enrollment загружается один раз в начале блока, используется для обоих обновлений.
+
+- **P1-03 — Зачисление: N последовательных INSERT вместо batch** (`apps/api/src/routes/campaigns.ts`)
+  - `for...of` с `await db.insert(...)` на каждой компании: 50 компаний = 50 round-trip к БД.
+  - Fix: заменено на `db.insert().values([...]).onConflictDoNothing().returning()`. Один round-trip, дубликаты обрабатываются на уровне БД.
+
+- **P1-04 — Статусы участников на английском** (`apps/web/src/app/(dashboard)/campaigns/[id]/page.tsx`)
+  - Таблица отображала `active`, `bounced`, `completed` вместо «Активен», «Отскок», «Завершён».
+  - Fix: добавлен `ENR_LABELS` с русскими переводами всех статусов.
+
+### Верификация
+
+- TypeScript: `tsc --noEmit` — 0 ошибок: `apps/api`, `apps/workers`, `apps/web`
+- Тесты: 26/26 ✅
+- Оба воркфлоу healthy: API (3001) + Web (5000)
+
+---
+
 ## QA Audit — Pre-Sprint 1.6 Bug Fixes (2026-07-20)
 
 Full audit of the codebase after Sprint 1.5. Found and fixed 6 bugs (2 P0, 4 P1).

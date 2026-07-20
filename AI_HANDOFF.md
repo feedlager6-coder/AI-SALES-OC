@@ -76,31 +76,51 @@ ai-sales-os/
 ---
 
 ## ════════════════════════════════════════════
-## PRE-SPRINT 1.6 QA AUDIT (2026-07-20)
+## PRODUCTION-READY AUDIT — PRE-SPRINT 1.6 (2026-07-20, полный аудит)
 ## ════════════════════════════════════════════
 
+Полный E2E + Security + Performance + Reliability аудит. 6 багов исправлено (2 P0, 4 P1).
+
 ### Bugs fixed in this audit
+
+| ID | Priority | Area | File(s) | Description |
+|----|----------|------|---------|-------------|
+| P0-01 | **P0** | E2E / UX | `campaigns/[id]/page.tsx` | **Enrollment UI отсутствовал** — пользователь не мог зачислить ни одну компанию в цепочку. Весь outreach заблокирован. Добавлен `EnrollModal`. |
+| P0-02 | **P0** | E2E / UX | `campaigns/[id]/page.tsx`, `routes/campaigns.ts` | **Таблица участников показывала UUID** вместо названия компании. Исправлено: LEFT JOIN companies + `companyName` в ответе. |
+| P1-01 | **P1** | Security | `routes/webhooks.ts` | **Webhook без workspace-фильтра** при hard bounce — `UPDATE companies` без `workspaceId`. Добавлен фильтр по `send.workspaceId`. |
+| P1-02 | **P1** | Performance | `routes/webhooks.ts` | **N+1 в webhook-обработчике** — повторный `findFirst` enrollment который уже был загружен. Убрано. |
+| P1-03 | **P1** | Performance | `routes/campaigns.ts` | **Последовательные INSERT** — `for...of await insert` для каждой компании. Заменено на batch insert с `onConflictDoNothing()`. |
+| P1-04 | **P1** | UX | `campaigns/[id]/page.tsx` | **Статусы участников на английском** — `active`, `bounced` etc. Добавлен `ENR_LABELS` с переводами. |
+
+### Verification results
+
+- `tsc --noEmit`: ✅ apps/api, apps/workers, apps/web — 0 ошибок
+- `pnpm turbo run test`: ✅ 26/26 тестов
+- Оба воркфлоу: API (3001) + Web (5000) — healthy
+
+### P2 — открытые технические долги (в Sprint 1.6 или позже)
+
+- `campaigns.stats.sent` / `opened` / `replied` — не обновляются (требует инструментации worker'а)
+- `DELETE /api/sequences/:id` — hard delete, не проверяет активные enrollments
+- Нет soft-delete на sequences, campaigns, email_accounts
+- Нет FK-индексов на некоторых таблицах
+
+---
+
+## ════════════════════════════════════════════
+## FIRST QA PASS — PRE-SPRINT 1.6 (2026-07-20)
+## ════════════════════════════════════════════
+
+### Bugs fixed
 
 | ID | Priority | File(s) | Description |
 |----|----------|---------|-------------|
 | BUG-01 | **P0** | `routes/sequences.ts` | `CreateSequenceSchema.steps` min(1) rejected empty-steps creation from UI → 400 on every new sequence. Fixed: min(0). |
-| BUG-02 | **P0** | `routes/campaigns.ts`, `routes/sequences.ts` | PATCH/DELETE/start/pause/stop DML used only `eq(id)` with no workspace filter. Any authenticated user knowing an ID could mutate another workspace. Fixed: `eq(workspaceId)` added to every DML WHERE. |
+| BUG-02 | **P0** | `routes/campaigns.ts`, `routes/sequences.ts` | PATCH/DELETE/start/pause/stop DML used only `eq(id)` with no workspace filter. Fixed: `eq(workspaceId)` added to every DML WHERE. |
 | BUG-03 | **P1** | `routes/companies.ts` | `PATCH /companies/:id` UPDATE lacked `isNull(deletedAt)` → soft-deleted companies could be edited. Fixed. |
-| BUG-04 | **P1** | `workers/email.worker.ts`, `queue/jobs.ts` | `scheduleNextStep()` always picked first active account, not the original sender. Follow-up emails arrived from a different address. Fixed: `emailAccountId` added to `ScheduleSequenceStepPayload` and propagated through all calls. |
-| BUG-05 | **P1** | `routes/contacts.ts` | Contact search only matched `fullName` via ILIKE. Searching by email returned nothing. Fixed: `OR(fullName, email, phone)`. |
-| BUG-06 | **P1** | `routes/campaigns.ts` | `stats.enrolled` never incremented after enrollment. Campaign detail always showed 0 enrolled. Fixed: atomic `jsonb_set` after enroll. |
-
-### Verification results
-
-- `tsc --noEmit`: ✅ apps/api, apps/workers, apps/web — no errors
-- `pnpm turbo run test`: ✅ 26/26 tests passing
-- Both workflows healthy: API (port 3001) + Web (port 5000)
-
-### Remaining open items (carry to Sprint 1.6)
-
-- `campaigns.stats.sent` / `opened` / `replied` — only `enrolled` is now updated. The rest require worker instrumentation (Sprint 1.6).
-- Enrollment table shows raw UUIDs (`companyId`) instead of company names — needs a JOIN or enriched API response.
-- `DELETE /api/sequences/:id` is a hard delete — sequences with active enrollments can be removed (TD-001 gap).
+| BUG-04 | **P1** | `workers/email.worker.ts`, `queue/jobs.ts` | `scheduleNextStep()` always picked first active account. Fixed: `emailAccountId` propagated through all calls. |
+| BUG-05 | **P1** | `routes/contacts.ts` | Contact search only matched `fullName`. Fixed: `OR(fullName, email, phone)`. |
+| BUG-06 | **P1** | `routes/campaigns.ts` | `stats.enrolled` never incremented. Fixed: atomic `jsonb_set` after enroll. |
 
 ---
 

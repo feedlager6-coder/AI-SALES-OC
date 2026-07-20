@@ -577,6 +577,8 @@ export interface SequenceEnrollment {
   workspaceId: string
   sequenceId: string | null
   companyId: string | null
+  /** Resolved via LEFT JOIN on companies — present when companyId is set */
+  companyName?: string | null
   contactId: string | null
   status: 'active' | 'paused' | 'completed' | 'replied' | 'unsubscribed' | 'bounced' | 'stopped'
   currentStep: number

@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, use } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import {
   ArrowLeft, Plus, Trash2, ChevronDown, ChevronUp,
-  Mail, Clock, Play, Pause, Square, Save, Users,
+  Mail, Clock, Play, Pause, Square, Save, Users, Search,
 } from 'lucide-react'
-import { api, type Sequence, type SequenceStep, type CreateSequenceBody } from '@/lib/api-client'
+import { api, type Company, type Sequence, type SequenceStep, type CreateSequenceBody } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
@@ -316,7 +316,7 @@ function CreateSequenceModal({
   )
 }
 
-// ─── Enrollment status badge ──────────────────────────────────────────────────
+// ─── Enrollment status ────────────────────────────────────────────────────────
 
 const ENR_COLORS: Record<string, string> = {
   active: 'text-emerald-400',
@@ -326,6 +326,218 @@ const ENR_COLORS: Record<string, string> = {
   bounced: 'text-red-400',
   stopped: 'text-gray-400',
   unsubscribed: 'text-gray-400',
+}
+
+const ENR_LABELS: Record<string, string> = {
+  active: 'Активен',
+  paused: 'На паузе',
+  completed: 'Завершён',
+  replied: 'Ответил',
+  bounced: 'Отскок',
+  stopped: 'Остановлен',
+  unsubscribed: 'Отписался',
+}
+
+// ─── Enroll modal ─────────────────────────────────────────────────────────────
+
+function EnrollModal({
+  campaignId,
+  sequences,
+  onClose,
+}: {
+  campaignId: string
+  sequences: Sequence[]
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [sequenceId, setSequenceId] = useState(sequences[0]?.id ?? '')
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const { data: companiesData, isLoading: companiesLoading } = useQuery({
+    queryKey: ['companies-enroll', debouncedSearch],
+    queryFn: () =>
+      api.companies.list({ ...(debouncedSearch ? { search: debouncedSearch } : {}), limit: 20, page: 1 }),
+  })
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.campaigns.enroll(campaignId, {
+        sequenceId,
+        companyIds: Array.from(selectedIds),
+      }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['campaign', campaignId] })
+      void queryClient.invalidateQueries({ queryKey: ['campaign-enrollments', campaignId] })
+      const { enrolled, skipped } = result.data
+      toast.success(
+        skipped > 0
+          ? `Зачислено: ${enrolled}, пропущено дубликатов: ${skipped}`
+          : `Зачислено: ${enrolled} компаний`,
+      )
+      onClose()
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const companiesList: Company[] = companiesData?.data ?? []
+
+  const toggleCompany = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const toggleAll = () => {
+    if (companiesList.every((c) => selectedIds.has(c.id))) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(companiesList.map((c) => c.id)))
+    }
+  }
+
+  const allSelected = companiesList.length > 0 && companiesList.every((c) => selectedIds.has(c.id))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex w-full max-w-md flex-col rounded-xl border border-border bg-card shadow-xl max-h-[85vh]">
+        {/* Header */}
+        <div className="shrink-0 border-b border-border p-5">
+          <h2 className="text-lg font-semibold text-foreground">Зачислить компании</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Выберите цепочку и компании для запуска outreach
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Sequence selector — only if multiple sequences */}
+          {sequences.length > 1 && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Цепочка</label>
+              <select
+                value={sequenceId}
+                onChange={(e) => setSequenceId(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {sequences.map((seq) => (
+                  <option key={seq.id} value={seq.id}>
+                    {seq.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Company search */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Компании
+              {selectedIds.size > 0 && (
+                <span className="ml-2 font-normal text-primary">
+                  {selectedIds.size} выбрано
+                </span>
+              )}
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Поиск по названию..."
+                className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          {/* Company list */}
+          <div className="rounded-lg border border-border overflow-hidden">
+            {companiesLoading ? (
+              <div className="divide-y divide-border">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-3">
+                    <div className="h-4 w-4 animate-pulse rounded bg-muted" />
+                    <div className="h-3.5 w-40 animate-pulse rounded bg-muted" />
+                  </div>
+                ))}
+              </div>
+            ) : companiesList.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                {debouncedSearch ? 'Компании не найдены' : 'Нет компаний в базе'}
+              </div>
+            ) : (
+              <div className="divide-y divide-border max-h-52 overflow-y-auto">
+                {/* Select all */}
+                <label className="flex cursor-pointer items-center gap-3 bg-muted/30 px-4 py-2 hover:bg-muted/50">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="rounded"
+                  />
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Выбрать все ({companiesList.length})
+                  </span>
+                </label>
+                {companiesList.map((company) => (
+                  <label
+                    key={company.id}
+                    className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(company.id)}
+                      onChange={() => toggleCompany(company.id)}
+                      className="rounded"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{company.name}</p>
+                      {(company.city || company.industry) && (
+                        <p className="truncate text-xs text-muted-foreground">
+                          {[company.city, company.industry].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="shrink-0 flex gap-3 border-t border-border p-5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={() => mutation.mutate()}
+            disabled={selectedIds.size === 0 || !sequenceId || mutation.isPending}
+            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {mutation.isPending
+              ? 'Зачисление...'
+              : selectedIds.size > 0
+                ? `Зачислить ${selectedIds.size}`
+                : 'Зачислить'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -338,6 +550,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
   const [editingSeqId, setEditingSeqId] = useState<string | null>(null)
   const [confirmStop, setConfirmStop] = useState(false)
   const [confirmDeleteSeqId, setConfirmDeleteSeqId] = useState<string | null>(null)
+  const [showEnroll, setShowEnroll] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['campaign', id],
@@ -579,7 +792,19 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
 
       {/* Enrollments tab */}
       {tab === 'enrollments' && (
-        <div>
+        <div className="space-y-4">
+          {/* Enroll button — only when campaign is not finished */}
+          {sequences.length > 0 && (campaign.status === 'draft' || campaign.status === 'active' || campaign.status === 'paused') && (
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowEnroll(true)}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="h-4 w-4" /> Зачислить компании
+              </button>
+            </div>
+          )}
+
           {!enrollData ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
@@ -590,14 +815,26 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
             <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center">
               <Users className="mx-auto h-10 w-10 text-muted-foreground/40 mb-4" />
               <h3 className="text-base font-semibold text-foreground mb-1">Нет участников</h3>
-              <p className="text-sm text-muted-foreground">Зачислите компании в цепочку из раздела Компании</p>
+              <p className="text-sm text-muted-foreground">
+                {sequences.length === 0
+                  ? 'Сначала создайте цепочку на вкладке «Цепочки»'
+                  : 'Нажмите «Зачислить компании», чтобы начать outreach'}
+              </p>
+              {sequences.length > 0 && (campaign.status === 'draft' || campaign.status === 'active' || campaign.status === 'paused') && (
+                <button
+                  onClick={() => setShowEnroll(true)}
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  <Plus className="h-4 w-4" /> Зачислить компании
+                </button>
+              )}
             </div>
           ) : (
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Участник</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Компания</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Статус</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Шаг</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Зачислен</th>
@@ -607,10 +844,21 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                 <tbody className="divide-y divide-border">
                   {enrollData.data.map((enr) => (
                     <tr key={enr.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-3 text-foreground">{enr.companyId ?? enr.contactId ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        {enr.companyId ? (
+                          <Link
+                            href={`/companies/${enr.companyId}`}
+                            className="font-medium text-foreground hover:text-primary transition-colors"
+                          >
+                            {enr.companyName ?? enr.companyId.slice(0, 8)}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">{enr.contactId ?? '—'}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={cn('text-xs font-medium', ENR_COLORS[enr.status] ?? 'text-muted-foreground')}>
-                          {enr.status}
+                          {ENR_LABELS[enr.status] ?? enr.status}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{enr.currentStep}</td>
@@ -623,6 +871,14 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                 </tbody>
               </table>
             </div>
+          )}
+
+          {showEnroll && (
+            <EnrollModal
+              campaignId={id}
+              sequences={sequences}
+              onClose={() => setShowEnroll(false)}
+            />
           )}
         </div>
       )}

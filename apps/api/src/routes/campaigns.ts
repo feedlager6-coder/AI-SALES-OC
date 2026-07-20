@@ -19,6 +19,7 @@ import { and, eq, desc, count, inArray, sql } from 'drizzle-orm'
 import {
   getDb,
   campaigns,
+  companies,
   sequences,
   sequenceEnrollments,
 } from '@ai-sales-os/db'
@@ -346,8 +347,22 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
 
     const [rows, [{ total }]] = await Promise.all([
       db
-        .select()
+        .select({
+          id: sequenceEnrollments.id,
+          workspaceId: sequenceEnrollments.workspaceId,
+          sequenceId: sequenceEnrollments.sequenceId,
+          companyId: sequenceEnrollments.companyId,
+          companyName: companies.name,
+          contactId: sequenceEnrollments.contactId,
+          status: sequenceEnrollments.status,
+          currentStep: sequenceEnrollments.currentStep,
+          enrolledAt: sequenceEnrollments.enrolledAt,
+          completedAt: sequenceEnrollments.completedAt,
+          replyAt: sequenceEnrollments.replyAt,
+          replyClassification: sequenceEnrollments.replyClassification,
+        })
         .from(sequenceEnrollments)
+        .leftJoin(companies, eq(sequenceEnrollments.companyId, companies.id))
         .where(and(...conditions))
         .orderBy(desc(sequenceEnrollments.enrolledAt))
         .limit(query.limit)
@@ -391,29 +406,23 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
     })
     if (!seq) throw new NotFoundError('Sequence not found or does not belong to this campaign')
 
-    // Enroll companies — skip already enrolled
-    let enrolled = 0
-    let skipped = 0
+    // Batch insert enrollments; onConflictDoNothing silently skips duplicates
+    const values = body.companyIds.map((companyId) => ({
+      workspaceId: request.workspaceId,
+      sequenceId: body.sequenceId,
+      companyId,
+      status: 'active' as const,
+      ...(body.contactId ? { contactId: body.contactId } : {}),
+    }))
 
-    for (const companyId of body.companyIds) {
-      try {
-        await db.insert(sequenceEnrollments).values({
-          workspaceId: request.workspaceId,
-          sequenceId: body.sequenceId,
-          companyId,
-          status: 'active',
-          ...(body.contactId ? { contactId: body.contactId } : {}),
-        })
-        enrolled++
-      } catch (err) {
-        // Unique constraint = already enrolled
-        if (err instanceof Error && err.message.includes('unique')) {
-          skipped++
-        } else {
-          throw err
-        }
-      }
-    }
+    const inserted = await db
+      .insert(sequenceEnrollments)
+      .values(values)
+      .onConflictDoNothing()
+      .returning({ id: sequenceEnrollments.id })
+
+    const enrolled = inserted.length
+    const skipped = body.companyIds.length - enrolled
 
     // Atomically increment stats.enrolled and touch updatedAt
     await db

@@ -7,7 +7,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify'
 import { getDb, emailSends, sequenceEnrollments, companies, type EmailSend } from '@ai-sales-os/db'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { createLogger } from '@ai-sales-os/logger'
 import { registry } from '@ai-sales-os/plugins'
 import type { IEmailSendingPlugin } from '@ai-sales-os/plugins'
@@ -117,22 +117,29 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
     // Update enrollment status for terminal events
     if (send.enrollmentId) {
       if (event === 'bounced' && metadata?.bounceType === 'hard') {
-        await db
-          .update(sequenceEnrollments)
-          .set({ status: 'bounced' })
-          .where(eq(sequenceEnrollments.id, send.enrollmentId))
+        // Fetch enrollment ONCE so we have companyId for the subsequent company update
+        const enrollment = await db.query.sequenceEnrollments.findFirst({
+          where: eq(sequenceEnrollments.id, send.enrollmentId),
+          columns: { id: true, companyId: true },
+        })
 
-        // Mark company as opted-out on hard bounce
-        if (send.contactId) {
-          // Look up company via enrollment
-          const enrollment = await db.query.sequenceEnrollments.findFirst({
-            where: eq(sequenceEnrollments.id, send.enrollmentId),
-          })
-          if (enrollment?.companyId) {
+        if (enrollment) {
+          await db
+            .update(sequenceEnrollments)
+            .set({ status: 'bounced' })
+            .where(eq(sequenceEnrollments.id, enrollment.id))
+
+          // Mark company as opted-out on hard bounce; filter by workspace to prevent cross-workspace mutation
+          if (enrollment.companyId) {
             await db
               .update(companies)
               .set({ status: 'opted_out', updatedAt: new Date() })
-              .where(eq(companies.id, enrollment.companyId))
+              .where(
+                and(
+                  eq(companies.id, enrollment.companyId),
+                  eq(companies.workspaceId, send.workspaceId),
+                ),
+              )
           }
         }
       }
