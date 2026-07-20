@@ -1,194 +1,54 @@
+/**
+ * AI worker — Sprint 1.6.
+ * Processes GENERATE_EMAIL and CLASSIFY_REPLY jobs from the AI queue.
+ *
+ * Both handlers delegate to shared ai-helpers which own the OpenAI logic
+ * and keyword-based fallbacks.
+ */
 import { Worker, type ConnectionOptions } from 'bullmq'
-import OpenAI from 'openai'
-import { eq, and } from 'drizzle-orm'
-import { getDb, companies, sequenceEnrollments, aiLogs } from '@ai-sales-os/db'
+import { and, eq, sql } from 'drizzle-orm'
+import { getDb, sequenceEnrollments, aiLogs, sequences, campaigns } from '@ai-sales-os/db'
 import { createLogger } from '@ai-sales-os/logger'
-import { getEnv } from '@ai-sales-os/config'
 import { getRedisConnection, QUEUES, JOBS } from '@ai-sales-os/queue'
 import type { GenerateEmailPayload, ClassifyReplyPayload } from '@ai-sales-os/queue'
+import { generatePersonalisedEmail, classifyReplyText } from '../shared/ai-helpers.js'
 
 const logger = createLogger({ name: 'workers:ai' })
 
-// ─── OpenAI client (lazy — only initialised when key is present) ──────────────
-
-let _openai: OpenAI | null = null
-
-function getOpenAI(): OpenAI | null {
-  if (_openai) return _openai
-  const { OPENAI_API_KEY } = getEnv()
-  if (!OPENAI_API_KEY) return null
-  _openai = new OpenAI({ apiKey: OPENAI_API_KEY })
-  return _openai
-}
-
-// ─── Email generation ──────────────────────────────────────────────────────────
+// ─── Campaign stats helper ─────────────────────────────────────────────────────
 
 /**
- * Simple template substitution fallback when no OpenAI key is configured.
- * Replaces {{name}}, {{city}}, {{industry}} placeholders.
+ * Atomically increment a campaign stats counter for an enrollment.
+ * Resolves enrollmentId → sequenceId → campaignId.
  */
-function applyTemplateFallback(
-  template: string,
-  vars: Record<string, string | null | undefined>,
-): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '')
-}
-
-async function generateEmail(payload: GenerateEmailPayload): Promise<{
-  subject: string
-  bodyText: string
-  bodyHtml: string
-}> {
+async function incrementCampaignStat(
+  enrollmentId: string,
+  field: 'sent' | 'opened' | 'replied',
+): Promise<void> {
   const db = getDb()
-
-  // Fetch company for personalisation context
-  const company = await db.query.companies.findFirst({
-    where: eq(companies.id, payload.companyId),
-    columns: {
-      name: true, city: true, industry: true, inn: true,
-      domain: true, website: true, employeesCount: true,
-    },
+  const enrollment = await db.query.sequenceEnrollments.findFirst({
+    where: eq(sequenceEnrollments.id, enrollmentId),
+    columns: { sequenceId: true },
   })
+  if (!enrollment?.sequenceId) return
 
-  const ctx = {
-    name: company?.name ?? '',
-    city: company?.city ?? '',
-    industry: company?.industry ?? '',
-    inn: company?.inn ?? '',
-    website: company?.website ?? company?.domain ?? '',
-    employees: company?.employeesCount ?? '',
-  }
-
-  const openai = getOpenAI()
-
-  if (!openai) {
-    // No API key — apply template substitution only
-    logger.debug({ event: 'ai.generate_fallback', enrollmentId: payload.enrollmentId })
-    const subject = applyTemplateFallback(payload.templateSubject, ctx)
-    const bodyText = applyTemplateFallback(payload.templateBody, ctx)
-    return {
-      subject,
-      bodyText,
-      bodyHtml: `<p>${bodyText.replace(/\n/g, '</p><p>')}</p>`,
-    }
-  }
-
-  const systemPrompt = `Ты эксперт по B2B-продажам на российском рынке. 
-Напиши персонализированное outreach-письмо на русском языке.
-Тон: профессиональный, но дружелюбный. Не более 200 слов в теле письма.
-Верни JSON: { "subject": "...", "bodyText": "...", "bodyHtml": "..." }`
-
-  const userPrompt = `Данные о компании:
-- Название: ${ctx.name}
-- Город: ${ctx.city || 'неизвестно'}
-- Отрасль: ${ctx.industry || 'неизвестно'}
-- ИНН: ${ctx.inn || 'неизвестно'}
-- Сайт: ${ctx.website || 'неизвестно'}
-- Размер: ${ctx.employees || 'неизвестно'} сотрудников
-
-Шаблон письма:
-Тема: ${payload.templateSubject}
-Тело: ${payload.templateBody}
-
-Персонализируй письмо, сохрани структуру шаблона. Верни только JSON.`
-
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.7,
-    max_tokens: 800,
+  const sequence = await db.query.sequences.findFirst({
+    where: eq(sequences.id, enrollment.sequenceId),
+    columns: { campaignId: true },
   })
+  if (!sequence?.campaignId) return
 
-  const raw = response.choices[0]?.message?.content ?? '{}'
-  const parsed = JSON.parse(raw) as {
-    subject?: string
-    bodyText?: string
-    bodyHtml?: string
-  }
-
-  return {
-    subject: parsed.subject ?? payload.templateSubject,
-    bodyText: parsed.bodyText ?? payload.templateBody,
-    bodyHtml: parsed.bodyHtml ?? `<p>${(parsed.bodyText ?? payload.templateBody).replace(/\n/g, '</p><p>')}</p>`,
-  }
-}
-
-// ─── Reply classification ──────────────────────────────────────────────────────
-
-type ReplyClass = 'interested' | 'not_now' | 'not_interested' | 'out_of_office' | 'question' | 'other'
-
-const KEYWORD_RULES: Array<{ class: ReplyClass; patterns: RegExp[] }> = [
-  {
-    class: 'out_of_office',
-    patterns: [/в отпуске/i, /автоответ/i, /out of office/i, /on vacation/i, /буду недоступен/i],
-  },
-  {
-    class: 'not_interested',
-    patterns: [/не интересно/i, /не нужно/i, /отпишите/i, /unsubscribe/i, /не беспокойте/i, /спам/i],
-  },
-  {
-    class: 'not_now',
-    patterns: [/позже/i, /не сейчас/i, /сейчас не время/i, /вернитесь/i, /через/i],
-  },
-  {
-    class: 'interested',
-    patterns: [/интересно/i, /расскажите/i, /давайте/i, /согласен/i, /готов/i, /хочу узнать/i, /пришлите/i],
-  },
-  {
-    class: 'question',
-    patterns: [/\?/, /как /i, /что /i, /где /i, /когда /i, /сколько /i],
-  },
-]
-
-function classifyByKeywords(text: string): ReplyClass {
-  for (const rule of KEYWORD_RULES) {
-    if (rule.patterns.some((p) => p.test(text))) return rule.class
-  }
-  return 'other'
-}
-
-async function classifyReply(payload: ClassifyReplyPayload): Promise<ReplyClass> {
-  const openai = getOpenAI()
-
-  if (!openai) {
-    return classifyByKeywords(payload.replyText)
-  }
-
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: `Классифицируй ответ на cold email как одно из:
-- interested: хочет продолжить разговор
-- not_now: интерес есть, но не сейчас  
-- not_interested: не заинтересован
-- out_of_office: автоответ/отпуск
-- question: задал вопрос
-- other: другое
-
-Верни JSON: { "classification": "..." }`,
-      },
-      {
-        role: 'user',
-        content: `От: ${payload.replyFrom}\nТекст ответа:\n${payload.replyText}`,
-      },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.1,
-    max_tokens: 50,
-  })
-
-  const raw = response.choices[0]?.message?.content ?? '{}'
-  const parsed = JSON.parse(raw) as { classification?: string }
-  const cls = parsed.classification
-
-  const valid: ReplyClass[] = ['interested', 'not_now', 'not_interested', 'out_of_office', 'question', 'other']
-  return valid.includes(cls as ReplyClass) ? (cls as ReplyClass) : 'other'
+  await db
+    .update(campaigns)
+    .set({
+      stats: sql`jsonb_set(
+        stats,
+        ${sql.raw(`'{${field}}'`)},
+        to_jsonb(COALESCE((stats->>'${field}')::int, 0) + 1)
+      )`,
+      updatedAt: new Date(),
+    })
+    .where(eq(campaigns.id, sequence.campaignId))
 }
 
 // ─── Worker ───────────────────────────────────────────────────────────────────
@@ -204,17 +64,21 @@ export function startAiWorker() {
         const payload = job.data as GenerateEmailPayload
         logger.info({ event: 'ai.generate_start', enrollmentId: payload.enrollmentId })
 
-        const generated = await generateEmail(payload)
+        const generated = await generatePersonalisedEmail(
+          payload.companyId,
+          payload.templateSubject,
+          payload.templateBody,
+          payload.enrollmentId,
+        )
 
         const db = getDb()
+        const model = generated.usedAI ? 'gpt-4o-mini' : 'template-fallback'
 
-        // Log to audit trail
-        const model = getOpenAI() ? 'gpt-4o-mini' : 'template-fallback'
         await db.insert(aiLogs).values({
           workspaceId: payload.workspaceId,
           agent: 'writer',
           model,
-          provider: getOpenAI() ? 'openai' : 'none',
+          provider: generated.usedAI ? 'openai' : 'none',
           entityType: 'enrollment',
           entityId: payload.enrollmentId,
           outputPreview: generated.subject.slice(0, 300),
@@ -224,7 +88,7 @@ export function startAiWorker() {
           event: 'ai.generate_done',
           enrollmentId: payload.enrollmentId,
           subject: generated.subject,
-          model: getOpenAI() ? 'gpt-4o-mini' : 'fallback',
+          usedAI: generated.usedAI,
         })
 
         return generated
@@ -235,20 +99,26 @@ export function startAiWorker() {
         const payload = job.data as ClassifyReplyPayload
         logger.info({ event: 'ai.classify_start', enrollmentId: payload.enrollmentId })
 
-        const classification = await classifyReply(payload)
+        const { classification, usedAI } = await classifyReplyText(
+          payload.replyText,
+          payload.replyFrom,
+          payload.enrollmentId,
+        )
 
         const db = getDb()
 
         // Update enrollment with classification
+        // Stop sequence on definitive positive/negative replies
+        const shouldStopSequence =
+          classification === 'interested' ||
+          classification === 'not_interested'
+
         await db
           .update(sequenceEnrollments)
           .set({
             replyClassification: classification,
             replyAt: new Date(),
-            // Stop sequence on definitive replies
-            ...(classification === 'interested' || classification === 'not_interested'
-              ? { status: 'replied' }
-              : {}),
+            ...(shouldStopSequence ? { status: 'replied' } : {}),
           })
           .where(
             and(
@@ -257,12 +127,15 @@ export function startAiWorker() {
             ),
           )
 
-        // Log to audit trail
+        // Increment campaign replied counter
+        await incrementCampaignStat(payload.enrollmentId, 'replied')
+
+        // Log to AI audit trail
         await db.insert(aiLogs).values({
           workspaceId: payload.workspaceId,
           agent: 'classifier',
-          model: getOpenAI() ? 'gpt-4o-mini' : 'keyword-fallback',
-          provider: getOpenAI() ? 'openai' : 'none',
+          model: usedAI ? 'gpt-4o-mini' : 'keyword-fallback',
+          provider: usedAI ? 'openai' : 'none',
           entityType: 'enrollment',
           entityId: payload.enrollmentId,
           outputPreview: classification,
@@ -272,7 +145,8 @@ export function startAiWorker() {
           event: 'ai.classify_done',
           enrollmentId: payload.enrollmentId,
           classification,
-          model: getOpenAI() ? 'gpt-4o-mini' : 'keyword-fallback',
+          usedAI,
+          stopped: shouldStopSequence,
         })
 
         return { classification }

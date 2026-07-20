@@ -5,10 +5,11 @@
  * Flow per job:
  * 1. Load enrollment + sequence step from DB
  * 2. Check sent_today counter in Redis (RISK-001: atomic INCR, not DB column)
- * 3. Call email sending plugin (Mailgun/Brevo)
- * 4. Record EmailSend in DB
- * 5. Update enrollment currentStep
- * 6. Schedule next step (or mark enrollment completed)
+ * 3. AI personalise subject/body via OpenAI (or template fallback if no key)
+ * 4. Call email sending plugin (Mailgun/Brevo)
+ * 5. Record EmailSend in DB
+ * 6. Update enrollment currentStep
+ * 7. Schedule next step (or mark enrollment completed)
  */
 import { Worker, type ConnectionOptions } from 'bullmq'
 import { createLogger } from '@ai-sales-os/logger'
@@ -32,6 +33,7 @@ import {
 import { eq, and } from 'drizzle-orm'
 import { registry } from '@ai-sales-os/plugins'
 import type { IEmailSendingPlugin } from '@ai-sales-os/plugins'
+import { generatePersonalisedEmail } from '../shared/ai-helpers.js'
 
 const logger = createLogger({ name: 'workers:email' })
 
@@ -225,9 +227,40 @@ async function sendEmail(payload: SendEmailPayload): Promise<void> {
   }
 
   const toName = contact?.fullName ?? contact?.firstName ?? undefined
-  const subject = step.subject ?? '(no subject)'
-  const bodyHtml = step.bodyHtml ?? '<p>(empty)</p>'
-  const bodyText = step.bodyText
+
+  // ── AI personalisation (Sprint 1.6) ─────────────────────────────────────────
+  // Generate personalised email content using OpenAI (or template fallback).
+  // We only personalise if the step actually has a subject/body template.
+  const templateSubject = step.subject ?? ''
+  const templateBody = step.bodyText ?? ''
+  const companyId = enrollment.companyId ?? ''
+
+  let subject: string
+  let bodyHtml: string
+  let bodyText: string | undefined
+
+  if (companyId && (templateSubject || templateBody)) {
+    const generated = await generatePersonalisedEmail(
+      companyId,
+      templateSubject,
+      templateBody,
+      enrollmentId,
+    )
+    subject = generated.subject || templateSubject || '(no subject)'
+    bodyHtml = generated.bodyHtml || step.bodyHtml || '<p>(empty)</p>'
+    bodyText = generated.bodyText || undefined
+
+    logger.info({
+      event: 'email.ai_personalised',
+      enrollmentId,
+      usedAI: generated.usedAI,
+    })
+  } else {
+    // No company or no template — use stored step content directly
+    subject = step.subject ?? '(no subject)'
+    bodyHtml = step.bodyHtml ?? '<p>(empty)</p>'
+    bodyText = step.bodyText ?? undefined
+  }
 
   // Create EmailSend record (status: queued)
   const [sendRecord] = await db
@@ -350,9 +383,9 @@ async function scheduleNextStep(payload: ScheduleSequenceStepPayload): Promise<v
   if (!sequence) return
 
   const steps = sequence.steps as SequenceStep[]
-  const nextStepDef = steps.find((s) => s.stepNumber === nextStep)
+  const nextStepData = steps.find((s) => s.stepNumber === nextStep)
 
-  if (!nextStepDef) {
+  if (!nextStepData) {
     // No more steps — enrollment complete
     await db
       .update(sequenceEnrollments)
@@ -363,30 +396,32 @@ async function scheduleNextStep(payload: ScheduleSequenceStepPayload): Promise<v
     return
   }
 
-  // Calculate delay
+  // Calculate delay for the next step.
+  //
+  // Design rule: delay is applied EXACTLY ONCE — when a wait step is first
+  // scheduled (i.e. when it is enqueued as a BullMQ job with `delay`).
+  // When the wait-step job actually fires and advances to the following email
+  // step, zero additional delay is needed because the wait period has already
+  // elapsed.
+  //
+  // Before the fix there was a "look-back" path that re-applied the wait
+  // duration for the following email step, causing the configured interval to
+  // be applied twice.
   let delayMs = 0
-  if (nextStepDef.type === 'wait') {
-    const days = nextStepDef.delayDays ?? 0
-    const hours = nextStepDef.delayHours ?? 0
-    delayMs = (days * 24 + hours) * 60 * 60 * 1000
-
-    // After the wait step, schedule the following email step
-    const afterWaitStep = steps.find((s) => s.stepNumber === nextStep + 1)
-    if (!afterWaitStep) {
-      // Wait is the last step — complete enrollment
-      await db
-        .update(sequenceEnrollments)
-        .set({ status: 'completed', completedAt: new Date() })
-        .where(eq(sequenceEnrollments.id, enrollmentId))
-      return
-    }
+  if (nextStepData.type === 'wait') {
+    // Schedule the wait job to fire after the configured delay.
+    const days = nextStepData.delayDays ?? 0
+    const hours = nextStepData.delayHours ?? 0
+    delayMs = (days * 24 * 60 * 60 + hours * 60 * 60) * 1000
   }
+  // For email steps: delayMs stays 0 — the wait step that preceded this email
+  // step already held the BullMQ job for the configured duration.
 
   const scheduledAt = new Date(Date.now() + delayMs).toISOString()
 
   // Use the same email account from the original step to keep all emails in the sequence
   // coming from the same sender. Fall back to the first active account only when no
-  // preferred account is known (e.g. the first step of a manually-triggered enrollment).
+  // preferred account is known.
   let accountId = preferredAccountId
   if (!accountId) {
     const fallback = await db.query.emailAccounts.findFirst({

@@ -1,7 +1,7 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** QA Audit — Pre-Sprint 1.6 Bug Fixes (2026-07-20)
-> **Next sprint:** Sprint 1.6 — AI email generation (OpenAI key) + reply classifier + sequence builder UI improvements
+> **Last updated:** Sprint 1.6 Complete (2026-07-20)
+> **Next sprint:** Sprint 1.7 — TBD (see follow-up tasks)
 
 ---
 
@@ -71,7 +71,7 @@ ai-sales-os/
 | 1.4 | ✅ Complete | Outreach — campaigns, sequences, email accounts, sending worker, webhooks |
 | 1.5 | ✅ Complete | Dashboard stats, ZodError → 400, rate limiting, contacts page, analytics page, sequence builder UI, ConfirmDialogs |
 | QA | ✅ Complete | Pre-Sprint 1.6 audit — 6 bugs fixed (2 P0, 4 P1) |
-| **1.6** | **⬅ NEXT** | AI email generation (OpenAI), reply classifier, sequence builder UX improvements |
+| **1.6** | **✅ Complete** | AI email generation (OpenAI), reply classifier, campaign stats, sequence builder UX |
 
 ---
 
@@ -98,7 +98,22 @@ ai-sales-os/
 - `pnpm turbo run test`: ✅ 26/26 тестов
 - Оба воркфлоу: API (3001) + Web (5000) — healthy
 
-### P2 — открытые технические долги (в Sprint 1.6 или позже)
+### Sprint 1.6 deliverables — все реализованы
+
+| # | Область | Файл | Описание |
+|---|---------|------|----------|
+| 1 | Workers | `apps/workers/src/shared/ai-helpers.ts` | Новый shared AI-модуль: `generatePersonalisedEmail()`, `classifyReplyText()` с OpenAI + keyword fallback |
+| 2 | Workers | `apps/workers/src/email/email.worker.ts` | Вызов AI-персонализации перед отправкой каждого письма; использует company data из БД |
+| 3 | Workers | `apps/workers/src/ai/ai.worker.ts` | Рефакторинг на shared ai-helpers; `CLASSIFY_REPLY` теперь инкрементирует `campaigns.stats.replied` |
+| 4 | API | `apps/api/src/routes/webhooks.ts` | `replied` event → dispatch `CLASSIFY_REPLY` job; stats update (sent/opened) на `delivered`/`opened` |
+| 5 | API | `apps/api/src/services/ai-preview.ts` | Синхронный OpenAI preview для sequence builder UI |
+| 6 | API | `apps/api/src/routes/sequences.ts` | `POST /api/sequences/:id/generate-preview` — AI preview endpoint |
+| 7 | DB | `packages/db/src/migrations/0002_sprint_1_6_indexes.sql` | 5 индексов: `sequence_enrollments(sequence_id)`, `email_sends(contact_id)` + ещё 3 |
+| 8 | Plugins | `packages/plugins/src/interfaces/email-sending.interface.ts` | `EmailWebhookEvent.event` расширен до `'replied'`; metadata получила reply-поля |
+| 9 | Web | `apps/web/src/app/(dashboard)/campaigns/[id]/page.tsx` | AI Preview Dialog (выбор компании → OpenAI preview); кнопки ↑↓ для перестановки шагов; AI hint в редакторе; улучшены labels для reply classifications |
+| 10 | Web | `apps/web/src/lib/api-client.ts` | `api.sequences.generatePreview()` метод |
+
+### P2 — открытые технические долги (после Sprint 1.6)
 
 - `campaigns.stats.sent` / `opened` / `replied` — не обновляются (требует инструментации worker'а)
 - `DELETE /api/sequences/:id` — hard delete, не проверяет активные enrollments

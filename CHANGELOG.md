@@ -5,6 +5,54 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## Sprint 1.6 — AI Email Generation & Reply Classifier (2026-07-20)
+
+Sprint 1.6 wires up the OpenAI-powered personalisation that was built in Sprint 1.4 but never connected to the sending pipeline. Adds campaign stats tracking, reply classification dispatch, and a sequence builder "Generate with AI" preview feature.
+
+### New features
+
+- **AI email personalisation at send time** (`apps/workers/src/email/email.worker.ts`)
+  - Before every email is sent, `generatePersonalisedEmail()` is called with the company context (name, city, industry, INN, website, employees).
+  - OpenAI `gpt-4o-mini` personalises subject + body; falls back to `{{variable}}` template substitution when no API key is set.
+  - `usedAI` flag logged to `ai_logs` for audit trail.
+
+- **Reply classifier dispatched from webhook** (`apps/api/src/routes/webhooks.ts`)
+  - New `replied` event case: dispatches `CLASSIFY_REPLY` BullMQ job to the AI queue.
+  - `CLASSIFY_REPLY` in `ai.worker.ts`: classifies reply as `interested` / `not_now` / `not_interested` / `out_of_office` / `question` / `other`; stops sequence for definitive replies; increments `campaigns.stats.replied`.
+
+- **Campaign stats tracking** (`apps/api/src/routes/webhooks.ts`, `apps/workers/src/ai/ai.worker.ts`)
+  - `stats.sent` incremented on `delivered` event.
+  - `stats.opened` incremented on first `opened` event per send.
+  - `stats.replied` incremented after CLASSIFY_REPLY completes.
+  - All increments use atomic `jsonb_set` — no race conditions.
+
+- **AI Preview endpoint** (`apps/api/src/routes/sequences.ts`, `apps/api/src/services/ai-preview.ts`)
+  - `POST /api/sequences/:id/generate-preview` — takes `{ stepNumber, companyId }`, returns personalised `{ subject, bodyText, bodyHtml, usedAI, companyName }`.
+  - Called synchronously in the API process (same OpenAI model as workers).
+
+- **Sequence builder UX improvements** (`apps/web/src/app/(dashboard)/campaigns/[id]/page.tsx`)
+  - **✨ "Generate with AI" button** per email step — opens `AiPreviewDialog`: search for a company, press generate, see personalised preview in-place.
+  - **↑↓ step reordering buttons** — move any step up or down; step numbers auto-renumbered.
+  - **AI hint banner** in editor explaining template variables.
+  - **Reply classification labels** in enrollments table — shows emoji-annotated Russian labels instead of raw enum values.
+  - Stats grid now shows `sent` / `opened` / `replied` counts (previously always 0).
+
+### Technical
+
+- **Shared AI helpers** (`apps/workers/src/shared/ai-helpers.ts`) — extracted from ai.worker to avoid duplication between email.worker and ai.worker.
+- **DB migration 0002** — 5 new performance indexes: `sequence_enrollments(sequence_id)`, `sequence_enrollments(workspace_id, status)`, `email_sends(contact_id)`, `email_sends(enrollment_id)`, `email_sends(workspace_id, sent_at)`.
+- **Plugin type extended** — `EmailWebhookEvent.event` now includes `'replied'`; metadata extended with reply-specific fields (`from`, `replyText`, `body`, `stripped`).
+- `openai` package added to `apps/api` for synchronous preview generation.
+
+### Verification
+
+- TypeScript: `tsc --noEmit` — 0 errors: `apps/api`, `apps/workers`, `apps/web`
+- Tests: **26/26 ✅** (no regressions)
+- DB migration: applied cleanly (`0002_sprint_1_6_indexes.sql`)
+- Both workflows healthy: API (3001) + Web (5000)
+
+---
+
 ## Production-Ready Audit — Pre-Sprint 1.6 (2026-07-20, второй проход)
 
 Full E2E + security + performance + reliability audit. Found 6 bugs (2 P0, 4 P1). All fixed.

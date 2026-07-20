@@ -4,15 +4,68 @@
  * Does NOT require workspace auth — validated by provider signature.
  *
  * POST /api/webhooks/mailgun
+ *
+ * Sprint 1.6 additions:
+ * - "replied" event → dispatch CLASSIFY_REPLY job
+ * - Campaign stats update (sent / opened / replied) via atomic jsonb_set
  */
 import type { FastifyPluginAsync } from 'fastify'
-import { getDb, emailSends, sequenceEnrollments, companies, type EmailSend } from '@ai-sales-os/db'
-import { and, eq } from 'drizzle-orm'
+import {
+  getDb,
+  emailSends,
+  sequenceEnrollments,
+  sequences,
+  campaigns,
+  companies,
+  type EmailSend,
+} from '@ai-sales-os/db'
+import { and, eq, sql } from 'drizzle-orm'
 import { createLogger } from '@ai-sales-os/logger'
 import { registry } from '@ai-sales-os/plugins'
 import type { IEmailSendingPlugin } from '@ai-sales-os/plugins'
+import { getAiQueue, JOBS, makeJobId } from '@ai-sales-os/queue'
 
 const logger = createLogger({ name: 'api:webhooks' })
+
+// ─── Campaign stats helper ─────────────────────────────────────────────────────
+
+/**
+ * Atomically increment a campaign stats counter.
+ * Resolves enrollmentId → sequenceId → campaignId.
+ * Silently returns if the chain is broken (no sequence / campaign).
+ */
+async function incrementCampaignStat(
+  enrollmentId: string,
+  field: 'sent' | 'opened' | 'replied',
+): Promise<void> {
+  const db = getDb()
+
+  const enrollment = await db.query.sequenceEnrollments.findFirst({
+    where: eq(sequenceEnrollments.id, enrollmentId),
+    columns: { sequenceId: true },
+  })
+  if (!enrollment?.sequenceId) return
+
+  const sequence = await db.query.sequences.findFirst({
+    where: eq(sequences.id, enrollment.sequenceId),
+    columns: { campaignId: true },
+  })
+  if (!sequence?.campaignId) return
+
+  await db
+    .update(campaigns)
+    .set({
+      stats: sql`jsonb_set(
+        stats,
+        ${sql.raw(`'{${field}}'`)},
+        to_jsonb(COALESCE((stats->>'${field}')::int, 0) + 1)
+      )`,
+      updatedAt: new Date(),
+    })
+    .where(eq(campaigns.id, sequence.campaignId))
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
 export const webhooksRoutes: FastifyPluginAsync = async (app) => {
   /** POST /api/webhooks/mailgun — Mailgun event webhook */
@@ -48,7 +101,10 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
     try {
       webhookEvent = emailPlugin.parseWebhookEvent(request.body)
     } catch (err) {
-      logger.warn({ event: 'webhook.parse_failed', error: err instanceof Error ? err.message : String(err) })
+      logger.warn({
+        event: 'webhook.parse_failed',
+        error: err instanceof Error ? err.message : String(err),
+      })
       return reply.status(200).send({ ok: true })
     }
 
@@ -108,13 +164,28 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
       case 'unsubscribed':
         updates.unsubscribedAt = timestamp
         break
+
+      default:
+        break
     }
 
     if (Object.keys(updates).length > 0) {
       await db.update(emailSends).set(updates).where(eq(emailSends.id, send.id))
     }
 
-    // Update enrollment status for terminal events
+    // ── Campaign stats instrumentation (Sprint 1.6) ──────────────────────────
+    if (send.enrollmentId) {
+      if (event === 'delivered') {
+        await incrementCampaignStat(send.enrollmentId, 'sent')
+      }
+
+      if (event === 'opened' && !send.openedAt) {
+        // Only count first open per send
+        await incrementCampaignStat(send.enrollmentId, 'opened')
+      }
+    }
+
+    // ── Terminal enrollment events ────────────────────────────────────────────
     if (send.enrollmentId) {
       if (event === 'bounced' && metadata?.bounceType === 'hard') {
         // Fetch enrollment ONCE so we have companyId for the subsequent company update
@@ -129,7 +200,7 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
             .set({ status: 'bounced' })
             .where(eq(sequenceEnrollments.id, enrollment.id))
 
-          // Mark company as opted-out on hard bounce; filter by workspace to prevent cross-workspace mutation
+          // Mark company as opted-out; filter by workspace to prevent cross-workspace mutation
           if (enrollment.companyId) {
             await db
               .update(companies)
@@ -149,6 +220,43 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
           .update(sequenceEnrollments)
           .set({ status: 'unsubscribed' })
           .where(eq(sequenceEnrollments.id, send.enrollmentId))
+      }
+
+      // ── Reply event (Sprint 1.6) ───────────────────────────────────────────
+      // When Mailgun detects an inbound reply, dispatch CLASSIFY_REPLY job.
+      // Mailgun sends event="replied" with the reply body in metadata.
+      if (event === 'replied') {
+        const replyText = (metadata?.replyText as string | undefined) ??
+          (metadata?.stripped?.text as string | undefined) ??
+          (metadata?.body as string | undefined) ??
+          ''
+        const replyFrom = (metadata?.from as string | undefined) ?? send.toEmail
+
+        const aiQueue = getAiQueue()
+        const jobId = makeJobId(JOBS.CLASSIFY_REPLY, send.enrollmentId, send.id)
+
+        await aiQueue.add(
+          JOBS.CLASSIFY_REPLY,
+          {
+            workspaceId: send.workspaceId,
+            enrollmentId: send.enrollmentId,
+            emailSendId: send.id,
+            replyText,
+            replyFrom,
+          },
+          {
+            jobId,
+            // Priority classification: process within 10 seconds
+            attempts: 2,
+            backoff: { type: 'fixed', delay: 5000 },
+          },
+        )
+
+        logger.info({
+          event: 'webhook.reply_classify_queued',
+          enrollmentId: send.enrollmentId,
+          sendId: send.id,
+        })
       }
     }
 

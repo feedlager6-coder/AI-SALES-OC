@@ -447,6 +447,23 @@ export const api = {
         body: JSON.stringify(body),
       }),
     delete: (id: string) => request<void>(`/api/sequences/${id}`, { method: 'DELETE' }),
+    /** Sprint 1.6: AI email preview for the sequence builder */
+    generatePreview: (
+      id: string,
+      body: { stepNumber: number; companyId: string },
+    ) =>
+      request<{
+        data: {
+          subject: string
+          bodyText: string
+          bodyHtml: string
+          usedAI: boolean
+          companyName: string
+        }
+      }>(`/api/sequences/${id}/generate-preview`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   },
 
   // Workspace

@@ -18,13 +18,19 @@ export interface SendEmailResult {
 
 export interface EmailWebhookEvent {
   messageId: string
-  event: 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained' | 'unsubscribed'
+  /** Sprint 1.6: 'replied' is included for inbound reply detection */
+  event: 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained' | 'unsubscribed' | 'replied'
   timestamp: Date
   metadata?: {
     bounceType?: 'hard' | 'soft'
     clickUrl?: string
     userAgent?: string
     ip?: string
+    // Sprint 1.6: reply-specific fields (populated by providers that support inbound parsing)
+    from?: string
+    replyText?: string
+    body?: string
+    stripped?: { text?: string; html?: string }
   }
 }
 

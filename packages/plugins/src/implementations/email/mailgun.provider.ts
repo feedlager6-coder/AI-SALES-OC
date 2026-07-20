@@ -148,6 +148,8 @@ export class MailgunPlugin implements IEmailSendingPlugin {
       bounced: 'bounced',
       complained: 'complained',
       unsubscribed: 'unsubscribed',
+      // Sprint 1.6: inbound reply events
+      replied: 'replied',
     }
 
     const event: EmailWebhookEvent['event'] = eventMap[rawEvent] ?? 'delivered'
@@ -163,8 +165,60 @@ export class MailgunPlugin implements IEmailSendingPlugin {
     const userAgent = (eventData['client-info'] as Record<string, string> | undefined)?.['user-agent']
     const ip = (eventData['ip'] as string | undefined)
 
+    // Sprint 1.6: reply payload — extracted from both outgoing-event format
+    // and Mailgun inbound routing format.
+    //
+    // Outgoing event format (event-data.event === 'replied'):
+    //   eventData['sender'] or eventData['from'] → replyFrom
+    //   eventData['stripped-text']               → replyText (preferred)
+    //   eventData['body-plain']                  → replyText (fallback)
+    //
+    // Inbound routing POST format (multipart/form-data decoded by Fastify):
+    //   body['sender'] / body['from']            → replyFrom
+    //   body['stripped-text']                    → stripped.text
+    //   body['body-plain']                       → replyText
+    //   body['In-Reply-To']                      → messageId (if not already set above)
+    //   body['References']                       → last token as messageId fallback
+    const replyFrom =
+      (eventData['sender'] as string | undefined) ??
+      (eventData['from'] as string | undefined) ??
+      (parsed['sender'] as string | undefined) ??
+      (parsed['from'] as string | undefined)
+
+    const strippedText =
+      (eventData['stripped-text'] as string | undefined) ??
+      (parsed['stripped-text'] as string | undefined)
+
+    const bodyPlain =
+      (eventData['body-plain'] as string | undefined) ??
+      (parsed['body-plain'] as string | undefined)
+
+    // Resolve messageId from In-Reply-To or References when the standard
+    // event-data message-id header is absent (inbound routing case).
+    let resolvedMessageId = messageId
+    if (!resolvedMessageId) {
+      const inReplyTo =
+        (eventData['In-Reply-To'] as string | undefined) ??
+        (parsed['In-Reply-To'] as string | undefined)
+      if (inReplyTo) {
+        resolvedMessageId = inReplyTo.replace(/^<|>$/g, '')
+      } else {
+        const references =
+          (eventData['References'] as string | undefined) ??
+          (parsed['References'] as string | undefined)
+        if (references) {
+          // References is a space-separated list; the last entry is the direct parent
+          const parts = references.trim().split(/\s+/)
+          const last = parts[parts.length - 1]
+          if (last) {
+            resolvedMessageId = last.replace(/^<|>$/g, '')
+          }
+        }
+      }
+    }
+
     return {
-      messageId,
+      messageId: resolvedMessageId,
       event,
       timestamp: new Date(timestampSec * 1000),
       metadata: {
@@ -172,6 +226,12 @@ export class MailgunPlugin implements IEmailSendingPlugin {
         ...(clickUrl !== undefined ? { clickUrl } : {}),
         ...(userAgent !== undefined ? { userAgent } : {}),
         ...(ip !== undefined ? { ip } : {}),
+        // Reply-specific fields (populated for 'replied' events)
+        ...(replyFrom !== undefined ? { from: replyFrom } : {}),
+        ...(bodyPlain !== undefined ? { replyText: bodyPlain } : {}),
+        ...(strippedText !== undefined
+          ? { stripped: { text: strippedText } }
+          : {}),
       },
     }
   }

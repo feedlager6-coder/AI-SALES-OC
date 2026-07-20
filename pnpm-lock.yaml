@@ -80,6 +80,9 @@ importers:
       ioredis:
         specifier: 5.11.1
         version: 5.11.1
+      openai:
+        specifier: ^6.48.0
+        version: 6.48.0(zod@3.25.76)
       zod:
         specifier: ^3.24.2
         version: 3.25.76
@@ -4513,6 +4516,10 @@ snapshots:
   once@1.4.0:
     dependencies:
       wrappy: 1.0.2
+
+  openai@6.48.0(zod@3.25.76):
+    optionalDependencies:
+      zod: 3.25.76
 
   openai@6.48.0(zod@4.4.3):
     optionalDependencies:
