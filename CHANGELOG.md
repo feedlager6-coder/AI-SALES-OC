@@ -5,6 +5,37 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## QA Audit — UI Polish & Bug Fixes (2026-07-20)
+
+### New Files
+- **`apps/web/src/components/ui/confirm-dialog.tsx`** — Reusable modal dialog component replacing all native `confirm()` calls.
+- **`apps/web/src/app/(dashboard)/loading.tsx`** — Dashboard-level loading boundary (spinner + text).
+- **`apps/web/src/app/(dashboard)/error.tsx`** — Dashboard-level React error boundary with reset button.
+- **`apps/web/src/app/error.tsx`** — Root-level global error boundary.
+
+### Pages — Rewrites
+- **`/contacts`** — Replaced "Раздел в разработке" stub with a fully functional contacts table. Features: search by name (debounced 300ms), avatar initials, seniority badge, email/phone links, company link, pagination (25/page), loading skeletons, empty state with CTA.
+- **`/analytics`** — Replaced stub with real analytics page using `api.workspace.stats()`. Features: 4 KPI metric cards, conversion funnel bar chart, reply rate gauge, 6 "Coming soon" report cards.
+
+### Bug Fixes
+- **Status badge colors** (`companies/page.tsx`, `campaigns/page.tsx`) — Replaced light Tailwind color classes (`bg-slate-100 text-slate-700` etc.) with dark-compatible variants (`bg-slate-700/50 text-slate-300` etc.) that are visible on the dark background.
+- **`confirm()` dialogs** (5 locations) — Replaced all native browser `confirm()` calls with `ConfirmDialog` component:
+  - `campaigns/page.tsx` — Stop campaign
+  - `campaigns/[id]/page.tsx` — Stop campaign + Delete sequence (2 separate confirms)
+  - `companies/[id]/page.tsx` — Delete company
+  - `settings/page.tsx` — Delete email account
+- **Delete button colors** (`companies/[id]/page.tsx`) — Replaced light red (`border-red-200 hover:bg-red-50 text-red-600`) with dark-compatible (`border-red-900/50 hover:bg-red-900/20 text-red-400`).
+- **Dashboard title** (`dashboard/page.tsx`) — Changed `<h1>` from "Dashboard" (English) to "Дашборд" (Russian).
+- **Database migration** — Applied pending migrations (`pnpm db:migrate`) for fresh Replit environment; resolved `relation "users" does not exist` error that caused 500s on auth endpoints.
+
+### QA Results
+- `pnpm typecheck` — ✅ 0 errors (web + api)
+- `pnpm lint` — ✅ 9/9 tasks passed
+- `pnpm build` (web) — ✅ All 13 routes built clean
+- `pnpm test` — ✅ 26/26 tests passed (2 test files)
+
+---
+
 ## Post-Sprint 1.4 QA & Audit (2026-07-19)
 
 ### Bug Fixes

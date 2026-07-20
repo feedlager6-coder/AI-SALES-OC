@@ -9,6 +9,7 @@ import {
 import { api, type Campaign, type CreateCampaignBody } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -21,11 +22,11 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-700',
-  active: 'bg-emerald-100 text-emerald-700',
-  paused: 'bg-yellow-100 text-yellow-700',
-  completed: 'bg-blue-100 text-blue-700',
-  archived: 'bg-gray-100 text-gray-500',
+  draft: 'bg-slate-700/50 text-slate-300',
+  active: 'bg-emerald-900/60 text-emerald-300',
+  paused: 'bg-yellow-900/60 text-yellow-300',
+  completed: 'bg-blue-900/60 text-blue-300',
+  archived: 'bg-gray-800/60 text-gray-400',
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -150,6 +151,7 @@ function CreateCampaignModal({ open, onClose }: { open: boolean; onClose: () => 
 
 function CampaignCard({ campaign }: { campaign: Campaign }) {
   const queryClient = useQueryClient()
+  const [confirmStop, setConfirmStop] = useState(false)
 
   const startMutation = useMutation({
     mutationFn: () => api.campaigns.start(campaign.id),
@@ -165,8 +167,8 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 
   const stopMutation = useMutation({
     mutationFn: () => api.campaigns.stop(campaign.id),
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Кампания остановлена') },
-    onError: (err: Error) => toast.error(err.message),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Кампания остановлена'); setConfirmStop(false) },
+    onError: (err: Error) => { toast.error(err.message); setConfirmStop(false) },
   })
 
   const stats = campaign.stats
@@ -212,11 +214,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 
           {campaign.status === 'active' || campaign.status === 'paused' ? (
             <button
-              onClick={() => {
-                if (confirm('Остановить кампанию? Отправка будет завершена.')) {
-                  stopMutation.mutate()
-                }
-              }}
+              onClick={() => setConfirmStop(true)}
               disabled={stopMutation.isPending}
               title="Остановить"
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
@@ -224,6 +222,16 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
               <Square className="h-3.5 w-3.5" />
             </button>
           ) : null}
+          <ConfirmDialog
+            open={confirmStop}
+            title="Остановить кампанию?"
+            description="Отправка писем будет полностью прекращена. Это действие нельзя отменить."
+            confirmLabel="Остановить"
+            variant="destructive"
+            isPending={stopMutation.isPending}
+            onConfirm={() => stopMutation.mutate()}
+            onCancel={() => setConfirmStop(false)}
+          />
 
           <Link
             href={`/campaigns/${campaign.id}`}

@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { CompanyForm } from '@/components/companies/company-form'
 import { AddActivityModal } from '@/components/companies/add-activity-modal'
 import { AddContactModal } from '@/components/companies/add-contact-modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
@@ -157,6 +158,7 @@ export default function CompanyDetailPage() {
   const [showEdit, setShowEdit] = useState(false)
   const [showAddActivity, setShowAddActivity] = useState(false)
   const [showAddContact, setShowAddContact] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const { data: companyData, isLoading } = useQuery({
     queryKey: ['company', id],
@@ -267,12 +269,8 @@ export default function CompanyDetailPage() {
             Редактировать
           </button>
           <button
-            onClick={() => {
-              if (confirm('Удалить компанию? Это действие необратимо.')) {
-                deleteMutation.mutate()
-              }
-            }}
-            className="inline-flex items-center gap-2 rounded-md border border-red-200 bg-card px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+            onClick={() => setConfirmDelete(true)}
+            className="inline-flex items-center gap-2 rounded-md border border-red-900/50 bg-card px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-900/20 transition-colors"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -476,6 +474,16 @@ export default function CompanyDetailPage() {
           }}
         />
       )}
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Удалить компанию?"
+        description={`«${company.name}» будет удалена. Все контакты и активности по ней сохранятся в базе.`}
+        confirmLabel="Удалить"
+        variant="destructive"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => deleteMutation.mutate()}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }

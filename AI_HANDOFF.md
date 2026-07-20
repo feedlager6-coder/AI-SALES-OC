@@ -1,7 +1,7 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** Post-Sprint 1.4 Full Audit (2026-07-19)
-> **Next sprint:** Sprint 1.5 — Dashboard stats + ZodError fix + AI email generation
+> **Last updated:** QA UI Audit (2026-07-20)
+> **Next sprint:** Sprint 1.5 — ZodError fix + AI email generation (OpenAI key) + Redis INCR email rate limits
 
 ---
 
@@ -253,36 +253,51 @@ single-term exact substring search.
 - ❌ All 4 StatCards hardcoded to `"0"` — no API calls (= BUG-002)
 - ❌ No loading skeleton
 - ❌ "Начните с импорта..." CTA not linked to import modal
+- ✅ Title fixed to Russian "Дашборд" (was English "Dashboard") — **fixed 2026-07-20**
 
 ### `/companies`
 - ⚠️ Table has no `overflow-x-auto` wrapper — overflows on narrow screens
 - ⚠️ No confirmation dialog before bulk delete (if added in future)
+- ✅ Status badge colors fixed for dark theme — **fixed 2026-07-20**
 
 ### `/companies/:id`
 - ✅ Mostly complete
+- ✅ Delete button colors fixed for dark theme — **fixed 2026-07-20**
+- ✅ `confirm()` replaced with ConfirmDialog modal — **fixed 2026-07-20**
 - ⚠️ "Обогатить" button has no loading state after click (fires and forgets)
 - ⚠️ Contact cards have no edit/delete actions (API supports PATCH + soft-delete, UI does not)
 
 ### `/contacts` (global)
-- ❌ Full stub — "Раздел в разработке"
-- Missing: global contacts table with search + filters, inline edit, bulk actions
+- ✅ Implemented — real contacts table with search (debounced), avatars, email/phone links, company link, pagination — **fixed 2026-07-20**
+- ⚠️ Company name not shown (only link icon) — contacts API returns companyId but not companyName
+- ⚠️ No inline edit or bulk actions
 
 ### `/campaigns`
 - ✅ List + lifecycle working
-- ❌ No sequence builder UI (`/campaigns/:id` or `/sequences/:id`)
-- ❌ Clicking a campaign card goes nowhere (no detail route)
+- ✅ Status badge colors fixed for dark theme — **fixed 2026-07-20**
+- ✅ `confirm()` replaced with ConfirmDialog modal — **fixed 2026-07-20**
 - ❌ Enrollment UI missing (enroll companies into a campaign from UI)
 
+### `/campaigns/:id`
+- ✅ Sequence builder works
+- ✅ `confirm()` replaced with ConfirmDialog modal (stop + delete sequence) — **fixed 2026-07-20**
+
 ### `/analytics`
-- ❌ Full stub — "Раздел в разработке"
+- ✅ Implemented — KPI cards, conversion funnel bars, reply rate gauge, "Coming soon" report grid — **fixed 2026-07-20**
+- ⚠️ Only uses workspace.stats() aggregate endpoint; no time-series data yet
 
 ### `/settings`
 - ✅ Email accounts CRUD working
+- ✅ `confirm()` replaced with ConfirmDialog modal — **fixed 2026-07-20**
 - ⚠️ No workspace settings (team members, plan info)
 - ⚠️ No way to test email account connection (send test email)
 
-### Global UX gaps
-- ❌ No toast/notification system — actions succeed or fail silently (only console.log)
+### Global UX — fixed 2026-07-20
+- ✅ `loading.tsx` and `error.tsx` added for `/dashboard` route group
+- ✅ Root `error.tsx` added for catastrophic failures
+- ✅ `ConfirmDialog` component created in `apps/web/src/components/ui/confirm-dialog.tsx`
+
+### Global UX gaps (remaining)
 - ❌ No keyboard navigation for modals (Escape to close)
 - ❌ Icon-only buttons (`🗑️`, `▶`, `⏸`) have no `aria-label`
 - ❌ No empty state illustrations — only text placeholders

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { api, type Sequence, type SequenceStep, type CreateSequenceBody } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -335,6 +336,8 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
   const [tab, setTab] = useState<'sequences' | 'enrollments'>('sequences')
   const [showCreateSeq, setShowCreateSeq] = useState(false)
   const [editingSeqId, setEditingSeqId] = useState<string | null>(null)
+  const [confirmStop, setConfirmStop] = useState(false)
+  const [confirmDeleteSeqId, setConfirmDeleteSeqId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['campaign', id],
@@ -359,14 +362,14 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
   })
   const stopMutation = useMutation({
     mutationFn: () => api.campaigns.stop(id),
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Кампания остановлена') },
-    onError: (err: Error) => toast.error(err.message),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Кампания остановлена'); setConfirmStop(false) },
+    onError: (err: Error) => { toast.error(err.message); setConfirmStop(false) },
   })
 
   const deleteSeqMutation = useMutation({
     mutationFn: (seqId: string) => api.sequences.delete(seqId),
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Цепочка удалена') },
-    onError: (err: Error) => toast.error(err.message),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Цепочка удалена'); setConfirmDeleteSeqId(null) },
+    onError: (err: Error) => { toast.error(err.message); setConfirmDeleteSeqId(null) },
   })
 
   if (isLoading) {
@@ -418,11 +421,21 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
               </button>
             )}
             {(campaign.status === 'active' || campaign.status === 'paused') && (
-              <button onClick={() => { if (confirm('Остановить кампанию?')) stopMutation.mutate() }} disabled={stopMutation.isPending}
+              <button onClick={() => setConfirmStop(true)} disabled={stopMutation.isPending}
                 className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50">
                 <Square className="h-3.5 w-3.5" /> Стоп
               </button>
             )}
+            <ConfirmDialog
+              open={confirmStop}
+              title="Остановить кампанию?"
+              description="Отправка писем будет прекращена. Это действие нельзя отменить."
+              confirmLabel="Остановить"
+              variant="destructive"
+              isPending={stopMutation.isPending}
+              onConfirm={() => stopMutation.mutate()}
+              onCancel={() => setConfirmStop(false)}
+            />
           </div>
         </div>
 
@@ -511,7 +524,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                             Редактировать
                           </button>
                           <button
-                            onClick={() => { if (confirm('Удалить цепочку?')) deleteSeqMutation.mutate(seq.id) }}
+                            onClick={() => setConfirmDeleteSeqId(seq.id)}
                             className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -550,6 +563,16 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
             campaignId={id}
             open={showCreateSeq}
             onClose={() => setShowCreateSeq(false)}
+          />
+          <ConfirmDialog
+            open={confirmDeleteSeqId !== null}
+            title="Удалить цепочку?"
+            description="Цепочка и все её шаги будут удалены безвозвратно."
+            confirmLabel="Удалить"
+            variant="destructive"
+            isPending={deleteSeqMutation.isPending}
+            onConfirm={() => confirmDeleteSeqId && deleteSeqMutation.mutate(confirmDeleteSeqId)}
+            onCancel={() => setConfirmDeleteSeqId(null)}
           />
         </div>
       )}

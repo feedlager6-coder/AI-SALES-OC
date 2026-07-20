@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Plus, Trash2, Mail, CheckCircle, XCircle } from 'lucide-react'
 import { api, type EmailAccount, type CreateEmailAccountBody } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // ─── Add Email Account Modal ──────────────────────────────────────────────────
 
@@ -199,14 +200,16 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 function EmailAccountCard({ account }: { account: EmailAccount }) {
   const queryClient = useQueryClient()
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const deleteMutation = useMutation({
     mutationFn: () => api.emailAccounts.delete(account.id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['email-accounts'] })
       toast.success('Email аккаунт удалён')
+      setConfirmDelete(false)
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => { toast.error(err.message); setConfirmDelete(false) },
   })
 
   const toggleMutation = useMutation({
@@ -264,16 +267,22 @@ function EmailAccountCard({ account }: { account: EmailAccount }) {
             {account.isActive ? 'Отключить' : 'Включить'}
           </button>
           <button
-            onClick={() => {
-              if (confirm('Удалить email аккаунт? Активные кампании продолжат отправку через другие аккаунты.')) {
-                deleteMutation.mutate()
-              }
-            }}
+            onClick={() => setConfirmDelete(true)}
             disabled={deleteMutation.isPending}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
+          <ConfirmDialog
+            open={confirmDelete}
+            title="Удалить email аккаунт?"
+            description={`${account.email} будет удалён. Активные кампании продолжат отправку через другие аккаунты.`}
+            confirmLabel="Удалить"
+            variant="destructive"
+            isPending={deleteMutation.isPending}
+            onConfirm={() => deleteMutation.mutate()}
+            onCancel={() => setConfirmDelete(false)}
+          />
         </div>
       </div>
     </div>

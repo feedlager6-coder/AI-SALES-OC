@@ -38,20 +38,20 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  new: 'bg-slate-100 text-slate-700',
-  enriching: 'bg-blue-100 text-blue-700',
-  enriched: 'bg-cyan-100 text-cyan-700',
-  qualified: 'bg-emerald-100 text-emerald-700',
-  low_quality: 'bg-red-100 text-red-700',
-  contacted: 'bg-violet-100 text-violet-700',
-  replied: 'bg-purple-100 text-purple-700',
-  meeting: 'bg-yellow-100 text-yellow-700',
-  proposal: 'bg-orange-100 text-orange-700',
-  negotiation: 'bg-amber-100 text-amber-700',
-  won: 'bg-green-100 text-green-700',
-  closed_lost: 'bg-red-100 text-red-600',
-  paused_30d: 'bg-gray-100 text-gray-600',
-  opted_out: 'bg-gray-100 text-gray-500',
+  new: 'bg-slate-700/50 text-slate-300',
+  enriching: 'bg-blue-900/60 text-blue-300',
+  enriched: 'bg-cyan-900/60 text-cyan-300',
+  qualified: 'bg-emerald-900/60 text-emerald-300',
+  low_quality: 'bg-red-900/60 text-red-300',
+  contacted: 'bg-violet-900/60 text-violet-300',
+  replied: 'bg-purple-900/60 text-purple-300',
+  meeting: 'bg-yellow-900/60 text-yellow-300',
+  proposal: 'bg-orange-900/60 text-orange-300',
+  negotiation: 'bg-amber-900/60 text-amber-300',
+  won: 'bg-green-900/60 text-green-300',
+  closed_lost: 'bg-red-900/60 text-red-400',
+  paused_30d: 'bg-gray-800/60 text-gray-400',
+  opted_out: 'bg-gray-800/60 text-gray-500',
 }
 
 function StatusBadge({ status }: { status: string }) {
