@@ -70,12 +70,12 @@ function StatusBadge({ status }: { status: string }) {
 function IcpScoreBadge({ score }: { score: number }) {
   const color =
     score >= 75
-      ? 'text-emerald-600 font-bold'
+      ? 'text-emerald-400 font-bold'
       : score >= 50
-        ? 'text-blue-600 font-semibold'
+        ? 'text-blue-400 font-semibold'
         : score >= 30
-          ? 'text-amber-600'
-          : 'text-red-500'
+          ? 'text-amber-400'
+          : 'text-red-400'
   return <span className={cn('text-sm tabular-nums', color)}>{score}</span>
 }
 
@@ -275,7 +275,11 @@ export default function CompaniesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Компании</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {data ? `${data.meta.total} компаний в базе` : 'Загрузка...'}
+            {data
+              ? data.meta.total === 0
+                ? 'Нет компаний — добавьте первую'
+                : `${data.meta.total} ${data.meta.total === 1 ? 'компания' : data.meta.total < 5 ? 'компании' : 'компаний'} в базе`
+              : <span className="inline-block h-4 w-32 animate-pulse rounded bg-muted align-middle" />}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -426,10 +430,10 @@ export default function CompaniesPage() {
                 </div>
               </div>
               <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                <span>Reject (&lt;30)</span>
-                <span className="text-amber-500">Нейтральный (30–49)</span>
-                <span className="text-blue-500">Qualified (50–74)</span>
-                <span className="text-emerald-500">High (≥75)</span>
+                <span>Не в ICP (&lt;30)</span>
+                <span className="text-amber-400">Нейтральный (30–49)</span>
+                <span className="text-blue-400">Квалифицирован (50–74)</span>
+                <span className="text-emerald-400">Высокий (≥75)</span>
               </div>
             </div>
             <div className="flex flex-col gap-2">
@@ -455,9 +459,34 @@ export default function CompaniesPage() {
       {/* Table */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         {isLoading ? (
-          <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
-            Загрузка...
-          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                {['Компания','Город','Отрасль','Источник','Статус','ICP','Данные',''].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...Array(6)].map((_, i) => (
+                <tr key={i} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3">
+                    <div className="space-y-1.5">
+                      <div className="h-3.5 w-36 animate-pulse rounded bg-muted" />
+                      <div className="h-2.5 w-20 animate-pulse rounded bg-muted" />
+                    </div>
+                  </td>
+                  <td className="px-4 py-3"><div className="h-3.5 w-20 animate-pulse rounded bg-muted" /></td>
+                  <td className="px-4 py-3"><div className="h-3.5 w-28 animate-pulse rounded bg-muted" /></td>
+                  <td className="px-4 py-3"><div className="h-5 w-12 animate-pulse rounded-full bg-muted" /></td>
+                  <td className="px-4 py-3"><div className="h-5 w-20 animate-pulse rounded-full bg-muted" /></td>
+                  <td className="px-4 py-3"><div className="h-3.5 w-8 animate-pulse rounded bg-muted" /></td>
+                  <td className="px-4 py-3"><div className="h-3.5 w-14 animate-pulse rounded bg-muted" /></td>
+                  <td className="px-4 py-3"><div className="h-3.5 w-14 animate-pulse rounded bg-muted" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : table.getRowModel().rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-3">
             <Building2 className="h-10 w-10 text-muted-foreground/40" />

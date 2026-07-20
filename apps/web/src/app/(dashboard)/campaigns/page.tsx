@@ -195,7 +195,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
               onClick={() => startMutation.mutate()}
               disabled={startMutation.isPending}
               title="Запустить"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-emerald-400 hover:bg-emerald-900/20 transition-colors disabled:opacity-50"
             >
               <Play className="h-3.5 w-3.5" />
             </button>
@@ -206,7 +206,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
               onClick={() => pauseMutation.mutate()}
               disabled={pauseMutation.isPending}
               title="Пауза"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-yellow-600 hover:bg-yellow-50 transition-colors disabled:opacity-50"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-yellow-400 hover:bg-yellow-900/20 transition-colors disabled:opacity-50"
             >
               <Pause className="h-3.5 w-3.5" />
             </button>
@@ -330,7 +330,31 @@ export default function CampaignsPage() {
       {isLoading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-40 animate-pulse rounded-xl border border-border bg-card" />
+            <div key={i} className="rounded-xl border border-border bg-card p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+                  <div className="h-5 w-16 animate-pulse rounded-full bg-muted" />
+                </div>
+                <div className="flex gap-1">
+                  <div className="h-8 w-8 animate-pulse rounded-lg bg-muted" />
+                  <div className="h-8 w-8 animate-pulse rounded-lg bg-muted" />
+                </div>
+              </div>
+              <div className="grid grid-cols-5 gap-2 border-t border-border pt-4">
+                {[...Array(5)].map((_, j) => (
+                  <div key={j} className="text-center space-y-1">
+                    <div className="h-5 w-8 animate-pulse rounded bg-muted mx-auto" />
+                    <div className="h-2.5 w-14 animate-pulse rounded bg-muted mx-auto" />
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-4">
+                <div className="h-3 w-14 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-20 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-18 animate-pulse rounded bg-muted" />
+              </div>
+            </div>
           ))}
         </div>
       ) : error ? (

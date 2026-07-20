@@ -1,6 +1,6 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** QA UI Audit (2026-07-20)
+> **Last updated:** Demo Polish Audit (2026-07-20)
 > **Next sprint:** Sprint 1.5 — ZodError fix + AI email generation (OpenAI key) + Redis INCR email rate limits
 
 ---

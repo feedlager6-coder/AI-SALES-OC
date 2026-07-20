@@ -5,6 +5,50 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## Demo Polish Audit — First-User UX Fixes (2026-07-20)
+
+### Navigation & Layout
+- **Sidebar** (`sidebar.tsx`) — `'Dashboard'` label renamed to `'Дашборд'` (was the only remaining English nav item).
+- **Header** (`header.tsx`) — Left side was `<div />` (empty). Now shows the current page name as a breadcrumb label using `usePathname()` — e.g. "Компании", "Кампании", "Настройки". Right side unchanged (Выйти button).
+
+### Dashboard (`dashboard/page.tsx`) — Full rewrite
+- Removed static "Начните с импорта..." box that always rendered regardless of workspace data.
+- Added **smart onboarding guide** (3-step checklist: Add email account → Import companies → Create campaign) visible only when `totalCompanies === 0`.
+- Added **"next step" hint** banner (link to /campaigns) visible when companies exist but no emails have been sent yet (`emailsSent30d === 0`).
+- Fixed `"Reply rate: X%"` subtitle → `"Конверсия: X%"` (Russian).
+- Fixed `"Готовы к outreach"` → `"Готовы к рассылке"`.
+- Added per-card loading skeletons (pulsing placeholder block during API load).
+
+### Companies page (`companies/page.tsx`)
+- **Loading state** — replaced plain `"Загрузка..."` centered text with 6 skeleton table rows that match the real column structure (company name/subtitle, city, industry, source badge, status badge, ICP, data columns).
+- **Subtitle loading state** — replaced `'Загрузка...'` string with an animated inline skeleton pill.
+- **ICP filter labels** — translated English labels: `"Reject"` → `"Не в ICP"`, `"Qualified"` → `"Квалифицирован"`, `"High"` → `"Высокий"`.
+- **IcpScoreBadge colors** — updated from light-mode-only `-600` variants (`emerald-600`, `blue-600`, `amber-600`) to dark-compatible `-400` variants for contrast on dark backgrounds.
+
+### Company detail page (`companies/[id]/page.tsx`)
+- **Loading state** — replaced `"Загрузка..."` plain text with a full skeleton matching the two-column layout (back link, header, ICP panel, details panel, tab area with contact cards).
+
+### Campaigns page (`campaigns/page.tsx`)
+- **Loading skeleton** — replaced empty `h-40 animate-pulse` blocks with structured card skeletons showing title, status badge, action buttons, stat grid, and metadata rows.
+- **Action button hover colors** — `hover:bg-emerald-50` → `hover:bg-emerald-900/20`, `hover:bg-yellow-50` → `hover:bg-yellow-900/20`; text colors `text-emerald-600`/`text-yellow-600` → `text-emerald-400`/`text-yellow-400`.
+
+### Settings page (`settings/page.tsx`)
+- **Loading skeleton** — replaced empty `h-24` blocks with structured skeletons matching actual email account cards (avatar circle, name/email/status lines, action buttons).
+- **"Включить" button hover** — `hover:bg-emerald-50` → `hover:bg-emerald-900/20`, `text-emerald-600` → `text-emerald-400`.
+
+### Analytics page (`analytics/page.tsx`)
+- `"Готовы к outreach"` → `"Готовы к рассылке"`.
+- `"Reply rate: X%"` subtitle → `"Конверсия: X%"`.
+
+### Auth pages
+- **Login** (`(auth)/login/page.tsx`) — Added Zap icon + wordmark inline header matching sidebar brand identity.
+- **Register** (`(auth)/register/page.tsx`) — Same brand header treatment.
+
+### CI
+- Typecheck ✅ (0 errors), lint ✅ (0 warnings), all changes compile cleanly.
+
+---
+
 ## QA Audit — UI Polish & Bug Fixes (2026-07-20)
 
 ### New Files

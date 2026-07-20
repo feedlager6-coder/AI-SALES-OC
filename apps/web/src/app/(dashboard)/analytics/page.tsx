@@ -127,7 +127,7 @@ export default function AnalyticsPage() {
           <MetricCard
             title="Обогащено"
             value={stats?.enrichedCompanies?.toLocaleString('ru-RU') ?? null}
-            subtitle="Готовы к outreach"
+            subtitle="Готовы к рассылке"
             icon={Sparkles}
             isLoading={isLoading}
             accent="bg-cyan-500/10"
@@ -143,7 +143,7 @@ export default function AnalyticsPage() {
           <MetricCard
             title="Ответов получено"
             value={stats?.repliesCount?.toLocaleString('ru-RU') ?? null}
-            subtitle={`Reply rate: ${stats?.replyRate ?? 0}%`}
+            subtitle={`Конверсия: ${stats?.replyRate ?? 0}%`}
             icon={MessageSquare}
             isLoading={isLoading}
             accent="bg-emerald-500/10"

@@ -261,7 +261,7 @@ function EmailAccountCard({ account }: { account: EmailAccount }) {
               'rounded-lg px-2.5 py-1.5 text-xs font-medium border transition-colors',
               account.isActive
                 ? 'border-border text-muted-foreground hover:bg-accent'
-                : 'border-border text-emerald-600 hover:bg-emerald-50',
+                : 'border-border text-emerald-400 hover:bg-emerald-900/20',
             )}
           >
             {account.isActive ? 'Отключить' : 'Включить'}
@@ -331,7 +331,22 @@ export default function SettingsPage() {
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2].map((i) => (
-              <div key={i} className="h-24 animate-pulse rounded-xl border border-border bg-card" />
+              <div key={i} className="rounded-xl border border-border bg-card p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="h-10 w-10 animate-pulse rounded-full bg-muted shrink-0" />
+                    <div className="space-y-2">
+                      <div className="h-4 w-44 animate-pulse rounded bg-muted" />
+                      <div className="h-3 w-28 animate-pulse rounded bg-muted" />
+                      <div className="h-3 w-36 animate-pulse rounded bg-muted" />
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <div className="h-7 w-20 animate-pulse rounded-lg bg-muted" />
+                    <div className="h-7 w-7 animate-pulse rounded-lg bg-muted" />
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         ) : error ? (
