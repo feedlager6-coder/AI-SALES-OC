@@ -38,7 +38,8 @@ const SequenceStepSchema = z.object({
 const CreateSequenceSchema = z.object({
   name: z.string().min(1).max(255),
   campaignId: z.string().uuid(),
-  steps: z.array(SequenceStepSchema).min(1).max(20),
+  // Allow empty steps array so the UI can create a sequence and fill steps later
+  steps: z.array(SequenceStepSchema).min(0).max(20),
 })
 
 const UpdateSequenceSchema = z.object({
@@ -183,7 +184,7 @@ export const sequencesRoutes: FastifyPluginAsync = async (app) => {
         ...(body.steps !== undefined ? { steps: body.steps } : {}),
         updatedAt: new Date(),
       })
-      .where(eq(sequences.id, id))
+      .where(and(eq(sequences.id, id), eq(sequences.workspaceId, request.workspaceId)))
       .returning()
 
     logger.info({ event: 'sequence.updated', sequenceId: id, workspaceId: request.workspaceId })
@@ -203,7 +204,7 @@ export const sequencesRoutes: FastifyPluginAsync = async (app) => {
     })
     if (!existing) throw new NotFoundError('Sequence not found')
 
-    await db.delete(sequences).where(eq(sequences.id, id))
+    await db.delete(sequences).where(and(eq(sequences.id, id), eq(sequences.workspaceId, request.workspaceId)))
 
     logger.info({ event: 'sequence.deleted', sequenceId: id, workspaceId: request.workspaceId })
     return reply.status(204).send()

@@ -15,7 +15,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, eq, desc, count, inArray } from 'drizzle-orm'
+import { and, eq, desc, count, inArray, sql } from 'drizzle-orm'
 import {
   getDb,
   campaigns,
@@ -184,7 +184,7 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
         ...(body.sendingSettings !== undefined ? { sendingSettings: body.sendingSettings } : {}),
         updatedAt: new Date(),
       })
-      .where(eq(campaigns.id, id))
+      .where(and(eq(campaigns.id, id), eq(campaigns.workspaceId, request.workspaceId)))
       .returning()
 
     return reply.send({ data: updated })
@@ -210,7 +210,7 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
     await db
       .update(campaigns)
       .set({ status: 'archived', updatedAt: new Date() })
-      .where(eq(campaigns.id, id))
+      .where(and(eq(campaigns.id, id), eq(campaigns.workspaceId, request.workspaceId)))
 
     logger.info({ event: 'campaign.archived', campaignId: id, workspaceId: request.workspaceId })
     return reply.status(204).send()
@@ -244,7 +244,7 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
         startedAt: campaign.startedAt ?? new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(campaigns.id, id))
+      .where(and(eq(campaigns.id, id), eq(campaigns.workspaceId, request.workspaceId)))
       .returning()
 
     logger.info({ event: 'campaign.started', campaignId: id, workspaceId: request.workspaceId })
@@ -271,7 +271,7 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
     const [updated] = await db
       .update(campaigns)
       .set({ status: 'paused', updatedAt: new Date() })
-      .where(eq(campaigns.id, id))
+      .where(and(eq(campaigns.id, id), eq(campaigns.workspaceId, request.workspaceId)))
       .returning()
 
     logger.info({ event: 'campaign.paused', campaignId: id, workspaceId: request.workspaceId })
@@ -298,7 +298,7 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
     const [updated] = await db
       .update(campaigns)
       .set({ status: 'completed', endedAt: new Date(), updatedAt: new Date() })
-      .where(eq(campaigns.id, id))
+      .where(and(eq(campaigns.id, id), eq(campaigns.workspaceId, request.workspaceId)))
       .returning()
 
     logger.info({ event: 'campaign.stopped', campaignId: id, workspaceId: request.workspaceId })
@@ -415,10 +415,17 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    // Touch updatedAt on campaign
+    // Atomically increment stats.enrolled and touch updatedAt
     await db
       .update(campaigns)
-      .set({ updatedAt: new Date() })
+      .set({
+        stats: sql`jsonb_set(
+          stats,
+          '{enrolled}',
+          to_jsonb(COALESCE((stats->>'enrolled')::int, 0) + ${enrolled})
+        )`,
+        updatedAt: new Date(),
+      })
       .where(eq(campaigns.id, id))
 
     logger.info({

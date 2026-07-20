@@ -5,6 +5,46 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## QA Audit — Pre-Sprint 1.6 Bug Fixes (2026-07-20)
+
+Full audit of the codebase after Sprint 1.5. Found and fixed 6 bugs (2 P0, 4 P1).
+
+### P0 — Blocking fixes
+
+- **BUG-01 — Sequence creation always failed** (`apps/api/src/routes/sequences.ts`)
+  - `CreateSequenceSchema.steps` required `min(1)`, but the UI sends `steps: []` when creating a new empty sequence, causing a 400 on every creation attempt.
+  - Fix: relaxed to `min(0)` — steps are filled in the sequence editor after creation.
+
+- **BUG-02 — Missing workspace filter on DML** (`apps/api/src/routes/campaigns.ts`, `sequences.ts`)
+  - `PATCH`/`DELETE`/`start`/`pause`/`stop` routes verified ownership via `findFirst` but the actual `UPDATE`/`DELETE` SQL used only `eq(id)` without `eq(workspaceId)`. Any authenticated user knowing a resource ID could mutate another workspace's data.
+  - Fix: added `eq(workspaceId, request.workspaceId)` to every DML `WHERE` clause.
+
+### P1 — Logic errors
+
+- **BUG-03 — Soft-deleted companies could be PATCH'd** (`apps/api/src/routes/companies.ts`)
+  - `PATCH /api/companies/:id` UPDATE query lacked `isNull(deletedAt)`, allowing updates to soft-deleted records.
+  - Fix: added `isNull(companies.deletedAt)` to the UPDATE WHERE clause.
+
+- **BUG-04 — Email worker used wrong account for follow-up steps** (`apps/workers/src/email/email.worker.ts`, `packages/queue/src/jobs.ts`)
+  - `scheduleNextStep()` always picked the first active email account instead of the account that sent step 1. Multi-account workspaces would send follow-up emails from a different sender, breaking deliverability.
+  - Fix: added `emailAccountId?: string` to `ScheduleSequenceStepPayload`; original account is now propagated through every `scheduleNextStep` call. Falls back to first-active only when no account ID is known.
+
+- **BUG-05 — Contact search ignored email and phone** (`apps/api/src/routes/contacts.ts`)
+  - `GET /api/contacts?search=` only matched `fullName` via ILIKE. Searching a contact by email address returned zero results.
+  - Fix: expanded to `OR(ilike(fullName), ilike(email), ilike(phone))`.
+
+- **BUG-06 — Campaign stats (enrolled/sent) never updated** (`apps/api/src/routes/campaigns.ts`)
+  - `campaigns.stats` JSONB initialised as all zeros and never mutated. The enroll route only touched `updatedAt`.
+  - Fix: `POST /api/campaigns/:id/enroll` now atomically increments `stats.enrolled` via `jsonb_set`.
+
+### Verification
+
+- TypeScript: `tsc --noEmit` passes for `apps/api`, `apps/workers`, `apps/web`
+- Tests: 26/26 passing (campaigns + sequences test suites)
+- Both workflows healthy: API (port 3001) + Web (port 5000)
+
+---
+
 ## Demo Polish Audit — First-User UX Fixes (2026-07-20)
 
 ### Navigation & Layout

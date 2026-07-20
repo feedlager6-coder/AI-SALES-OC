@@ -83,6 +83,8 @@ export interface ScheduleSequenceStepPayload {
   enrollmentId: string
   nextStep: number
   scheduledAt: string // ISO8601
+  /** Preserve the original email account so follow-up steps use the same sender */
+  emailAccountId?: string
 }
 
 export interface GenerateEmailPayload {

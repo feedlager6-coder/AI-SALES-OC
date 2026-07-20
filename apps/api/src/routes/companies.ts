@@ -291,6 +291,7 @@ export const companiesRoutes: FastifyPluginAsync = async (app) => {
         and(
           eq(companies.id, id),
           eq(companies.workspaceId, request.workspaceId),
+          isNull(companies.deletedAt),
         ),
       )
       .returning()

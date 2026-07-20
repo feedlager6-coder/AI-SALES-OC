@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, eq, isNull, desc, ilike, count } from 'drizzle-orm'
+import { and, or, eq, isNull, desc, ilike, count } from 'drizzle-orm'
 import { getDb, contacts, companies } from '@ai-sales-os/db'
 import { ContactNotFoundError, BadRequestError } from '@ai-sales-os/errors'
 import { workspaceContextPlugin } from '../plugins/workspace-context.js'
@@ -51,7 +51,14 @@ export const contactsRoutes: FastifyPluginAsync = async (app) => {
 
     if (query.search) {
       const term = `%${query.search}%`
-      conditions.push(ilike(contacts.fullName, term))
+      // Search by name, email, and phone so users can find contacts by email address too
+      conditions.push(
+        or(
+          ilike(contacts.fullName, term),
+          ilike(contacts.email, term),
+          ilike(contacts.phone, term),
+        )!,
+      )
     }
 
     const offset = (query.page - 1) * query.limit

@@ -1,7 +1,7 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** Demo Polish Audit (2026-07-20)
-> **Next sprint:** Sprint 1.5 — ZodError fix + AI email generation (OpenAI key) + Redis INCR email rate limits
+> **Last updated:** QA Audit — Pre-Sprint 1.6 Bug Fixes (2026-07-20)
+> **Next sprint:** Sprint 1.6 — AI email generation (OpenAI key) + reply classifier + sequence builder UI improvements
 
 ---
 
@@ -69,7 +69,38 @@ ai-sales-os/
 | 1.2 | ✅ Complete | CRM Core — companies CRUD, contacts, deals, ICP scoring, activities |
 | 1.3 | ✅ Complete | Lead generation — 2ГИС, HH.ru, Dadata, Hunter, Snov plugins |
 | 1.4 | ✅ Complete | Outreach — campaigns, sequences, email accounts, sending worker, webhooks |
-| **1.5** | **⬅ NEXT** | Dashboard stats, ZodError fix, AI email writing, reply classification |
+| 1.5 | ✅ Complete | Dashboard stats, ZodError → 400, rate limiting, contacts page, analytics page, sequence builder UI, ConfirmDialogs |
+| QA | ✅ Complete | Pre-Sprint 1.6 audit — 6 bugs fixed (2 P0, 4 P1) |
+| **1.6** | **⬅ NEXT** | AI email generation (OpenAI), reply classifier, sequence builder UX improvements |
+
+---
+
+## ════════════════════════════════════════════
+## PRE-SPRINT 1.6 QA AUDIT (2026-07-20)
+## ════════════════════════════════════════════
+
+### Bugs fixed in this audit
+
+| ID | Priority | File(s) | Description |
+|----|----------|---------|-------------|
+| BUG-01 | **P0** | `routes/sequences.ts` | `CreateSequenceSchema.steps` min(1) rejected empty-steps creation from UI → 400 on every new sequence. Fixed: min(0). |
+| BUG-02 | **P0** | `routes/campaigns.ts`, `routes/sequences.ts` | PATCH/DELETE/start/pause/stop DML used only `eq(id)` with no workspace filter. Any authenticated user knowing an ID could mutate another workspace. Fixed: `eq(workspaceId)` added to every DML WHERE. |
+| BUG-03 | **P1** | `routes/companies.ts` | `PATCH /companies/:id` UPDATE lacked `isNull(deletedAt)` → soft-deleted companies could be edited. Fixed. |
+| BUG-04 | **P1** | `workers/email.worker.ts`, `queue/jobs.ts` | `scheduleNextStep()` always picked first active account, not the original sender. Follow-up emails arrived from a different address. Fixed: `emailAccountId` added to `ScheduleSequenceStepPayload` and propagated through all calls. |
+| BUG-05 | **P1** | `routes/contacts.ts` | Contact search only matched `fullName` via ILIKE. Searching by email returned nothing. Fixed: `OR(fullName, email, phone)`. |
+| BUG-06 | **P1** | `routes/campaigns.ts` | `stats.enrolled` never incremented after enrollment. Campaign detail always showed 0 enrolled. Fixed: atomic `jsonb_set` after enroll. |
+
+### Verification results
+
+- `tsc --noEmit`: ✅ apps/api, apps/workers, apps/web — no errors
+- `pnpm turbo run test`: ✅ 26/26 tests passing
+- Both workflows healthy: API (port 3001) + Web (port 5000)
+
+### Remaining open items (carry to Sprint 1.6)
+
+- `campaigns.stats.sent` / `opened` / `replied` — only `enrolled` is now updated. The rest require worker instrumentation (Sprint 1.6).
+- Enrollment table shows raw UUIDs (`companyId`) instead of company names — needs a JOIN or enriched API response.
+- `DELETE /api/sequences/:id` is a hard delete — sequences with active enrollments can be removed (TD-001 gap).
 
 ---
 

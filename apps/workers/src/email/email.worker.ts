@@ -172,8 +172,8 @@ async function sendEmail(payload: SendEmailPayload): Promise<void> {
   }
 
   if (step.type === 'wait') {
-    // Pure wait step — just advance to next
-    await scheduleNextStep({ workspaceId, enrollmentId, nextStep: stepNumber + 1, scheduledAt })
+    // Pure wait step — just advance to next; preserve the email account
+    await scheduleNextStep({ workspaceId, enrollmentId, nextStep: stepNumber + 1, scheduledAt, emailAccountId })
     return
   }
 
@@ -303,8 +303,8 @@ async function sendEmail(payload: SendEmailPayload): Promise<void> {
       to: toEmail,
     })
 
-    // Schedule next step
-    await scheduleNextStep({ workspaceId, enrollmentId, nextStep: stepNumber + 1, scheduledAt })
+    // Schedule next step — preserve the same email account so all steps use the same sender
+    await scheduleNextStep({ workspaceId, enrollmentId, nextStep: stepNumber + 1, scheduledAt, emailAccountId })
 
   } catch (err) {
     logger.error({
@@ -326,7 +326,7 @@ async function sendEmail(payload: SendEmailPayload): Promise<void> {
 // ─── Schedule next step ───────────────────────────────────────────────────────
 
 async function scheduleNextStep(payload: ScheduleSequenceStepPayload): Promise<void> {
-  const { workspaceId, enrollmentId, nextStep } = payload
+  const { workspaceId, enrollmentId, nextStep, emailAccountId: preferredAccountId } = payload
 
   const db = getDb()
 
@@ -384,17 +384,23 @@ async function scheduleNextStep(payload: ScheduleSequenceStepPayload): Promise<v
 
   const scheduledAt = new Date(Date.now() + delayMs).toISOString()
 
-  // Load the email account to use — take workspace default (first active account)
-  const account = await db.query.emailAccounts.findFirst({
-    where: and(
-      eq(emailAccounts.workspaceId, workspaceId),
-      eq(emailAccounts.isActive, true),
-    ),
-  })
-
-  if (!account) {
-    logger.warn({ event: 'email.no_active_account', workspaceId })
-    return
+  // Use the same email account from the original step to keep all emails in the sequence
+  // coming from the same sender. Fall back to the first active account only when no
+  // preferred account is known (e.g. the first step of a manually-triggered enrollment).
+  let accountId = preferredAccountId
+  if (!accountId) {
+    const fallback = await db.query.emailAccounts.findFirst({
+      where: and(
+        eq(emailAccounts.workspaceId, workspaceId),
+        eq(emailAccounts.isActive, true),
+      ),
+      columns: { id: true },
+    })
+    if (!fallback) {
+      logger.warn({ event: 'email.no_active_account', workspaceId })
+      return
+    }
+    accountId = fallback.id
   }
 
   const queue = getEmailQueue()
@@ -407,7 +413,7 @@ async function scheduleNextStep(payload: ScheduleSequenceStepPayload): Promise<v
       enrollmentId,
       stepNumber: nextStep,
       contactId: enrollment.contactId ?? '',
-      emailAccountId: account.id,
+      emailAccountId: accountId,
       scheduledAt,
     },
     {
