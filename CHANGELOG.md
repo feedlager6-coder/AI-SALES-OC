@@ -5,6 +5,68 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## Sprint 1.7 — E2E Outreach Flow Completion (2026-07-20)
+
+Sprint 1.7 closes the critical gap that prevented any emails from being sent after enrollment,
+fixes reply stat tracking, adds click stat tracking, and hardens the sequence delete endpoint.
+
+### Critical fix: Enrollment now starts the email flow
+
+- **`apps/api/src/routes/campaigns.ts`** — After batch-inserting `sequenceEnrollments`, the
+  enroll endpoint now dispatches `SEND_EMAIL` BullMQ jobs for each new enrollment. The job
+  targets the first step of the sequence and uses the first active email account for the
+  workspace. Without this fix, enrolled companies never received any emails.
+- Also hardened: `campaigns.stats.enrolled` increment now includes `workspaceId` in the WHERE
+  clause (workspace filter was missing in Sprint 1.6).
+- New imports: `emailAccounts` (db), `getEmailQueue`, `JOBS`, `makeJobId` (queue).
+
+### Stats accuracy fixes
+
+- **`apps/api/src/routes/webhooks.ts`** — Added `case 'replied': updates.repliedAt = timestamp`
+  to the `emailSends` update switch. Previously `repliedAt` was never set on the DB row,
+  causing `workspace.stats.repliesCount` to always return 0.
+- **`apps/workers/src/ai/ai.worker.ts`** — `CLASSIFY_REPLY` handler now also sets
+  `emailSends.repliedAt = new Date()` after classification completes. Provides a second write
+  path for replies that come through AI classification.
+- **`apps/api/src/routes/webhooks.ts`** — `clicked` events now call
+  `incrementCampaignStat(enrollmentId, 'clicked')` (de-duped to first click per send).
+  `incrementCampaignStat` type extended to include `'clicked'`.
+
+### Email worker: company email fallback
+
+- **`apps/workers/src/email/email.worker.ts`** — When no `contactId` is provided, the worker
+  now falls back to `company.emails[0]` before marking the enrollment as stopped. This allows
+  outreach to work for companies with email addresses in their company record.
+
+### Sequence delete guard
+
+- **`apps/api/src/routes/sequences.ts`** — `DELETE /api/sequences/:id` now checks for active
+  enrollments before deleting. Returns `400 BAD_REQUEST` if any exist. Import of
+  `sequenceEnrollments` added.
+
+### Analytics page: per-campaign breakdown
+
+- **`apps/web/src/app/(dashboard)/analytics/page.tsx`** — New `CampaignBreakdown` component
+  renders a table of campaigns with activity (enrolled > 0 or sent > 0), showing: name (linked),
+  status, enrolled, sent, opened (+open rate %), clicked, replied (+reply rate %). Skeleton
+  loading state; hidden when no active campaigns.
+
+### Tests
+
+- **`apps/api/tests/routes/sequences.test.ts`** — Added `sequenceEnrollments` to the DB mock
+  and two new test cases: "deletes sequence when found" (updated with enrollment count mock) and
+  "blocks delete when active enrollments exist" (new 400 guard test).
+- **Total: 27/27 tests ✅** (+1 vs Sprint 1.6)
+
+### Verification
+
+- `pnpm turbo run typecheck` → ✅ 0 errors (17 packages)
+- `pnpm turbo run lint` → ✅ 0 errors
+- `pnpm turbo run test` → ✅ 27/27
+- Both workflows running: API (3001) + Web (5000)
+
+---
+
 ## Sprint 1.6 — AI Email Generation & Reply Classifier (2026-07-20)
 
 Sprint 1.6 wires up the OpenAI-powered personalisation that was built in Sprint 1.4 but never connected to the sending pipeline. Adds campaign stats tracking, reply classification dispatch, and a sequence builder "Generate with AI" preview feature.

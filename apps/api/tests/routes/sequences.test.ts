@@ -48,6 +48,7 @@ vi.mock('@ai-sales-os/db', () => ({
   getDb: () => mocks.db,
   sequences: { id: 'id', workspaceId: 'workspace_id', campaignId: 'campaign_id', createdAt: 'created_at' },
   campaigns: { id: 'id', workspaceId: 'workspace_id', status: 'status' },
+  sequenceEnrollments: { id: 'id', sequenceId: 'sequence_id', workspaceId: 'workspace_id', status: 'status' },
 }))
 
 vi.mock('@ai-sales-os/logger', () => ({
@@ -258,8 +259,29 @@ describe('DELETE /:id — delete sequence', () => {
 
   it('deletes sequence when found', async () => {
     mocks.sequenceFindFirst.mockResolvedValue(makeSequence())
+    // Mock the enrollment count check: 0 active enrollments → allow delete
+    mocks.selectMock.mockReturnValueOnce({
+      from: () => ({
+        where: () => Promise.resolve([{ total: 0 }]),
+      }),
+    })
 
     const res = await app.inject({ method: 'DELETE', url: `/${SEQUENCE_ID}` })
     expect(res.statusCode).toBe(204)
+  })
+
+  it('blocks delete when active enrollments exist', async () => {
+    mocks.sequenceFindFirst.mockResolvedValue(makeSequence())
+    // Mock the enrollment count check: 1 active enrollment → block delete
+    mocks.selectMock.mockReturnValueOnce({
+      from: () => ({
+        where: () => Promise.resolve([{ total: 1 }]),
+      }),
+    })
+
+    const res = await app.inject({ method: 'DELETE', url: `/${SEQUENCE_ID}` })
+    expect(res.statusCode).toBe(400)
+    const body = JSON.parse(res.body) as { error?: { code?: string } }
+    expect(body.error?.code).toBe('BAD_REQUEST')
   })
 })

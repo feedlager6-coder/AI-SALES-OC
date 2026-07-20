@@ -36,7 +36,7 @@ const logger = createLogger({ name: 'api:webhooks' })
  */
 async function incrementCampaignStat(
   enrollmentId: string,
-  field: 'sent' | 'opened' | 'replied',
+  field: 'sent' | 'opened' | 'replied' | 'clicked',
 ): Promise<void> {
   const db = getDb()
 
@@ -165,6 +165,11 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
         updates.unsubscribedAt = timestamp
         break
 
+      case 'replied':
+        // Set repliedAt so workspace stats (replyRate) can count this reply
+        updates.repliedAt = timestamp
+        break
+
       default:
         break
     }
@@ -173,7 +178,7 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
       await db.update(emailSends).set(updates).where(eq(emailSends.id, send.id))
     }
 
-    // ── Campaign stats instrumentation (Sprint 1.6) ──────────────────────────
+    // ── Campaign stats instrumentation ──────────────────────────────────────
     if (send.enrollmentId) {
       if (event === 'delivered') {
         await incrementCampaignStat(send.enrollmentId, 'sent')
@@ -182,6 +187,11 @@ export const webhooksRoutes: FastifyPluginAsync = async (app) => {
       if (event === 'opened' && !send.openedAt) {
         // Only count first open per send
         await incrementCampaignStat(send.enrollmentId, 'opened')
+      }
+
+      if (event === 'clicked' && !send.clickedAt) {
+        // Only count first click per send
+        await incrementCampaignStat(send.enrollmentId, 'clicked')
       }
     }
 

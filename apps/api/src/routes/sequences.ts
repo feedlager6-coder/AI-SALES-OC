@@ -12,7 +12,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { and, eq, desc, count } from 'drizzle-orm'
-import { getDb, sequences, campaigns } from '@ai-sales-os/db'
+import { getDb, sequences, campaigns, sequenceEnrollments } from '@ai-sales-os/db'
 import { workspaceContextPlugin } from '../plugins/workspace-context.js'
 import { NotFoundError, BadRequestError } from '@ai-sales-os/errors'
 import { createLogger } from '@ai-sales-os/logger'
@@ -191,7 +191,7 @@ export const sequencesRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ data: updated })
   })
 
-  /** DELETE /api/sequences/:id — delete sequence */
+  /** DELETE /api/sequences/:id — delete sequence (blocked if active enrollments exist) */
   app.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
     const db = getDb()
@@ -203,6 +203,24 @@ export const sequencesRoutes: FastifyPluginAsync = async (app) => {
       ),
     })
     if (!existing) throw new NotFoundError('Sequence not found')
+
+    // Guard: refuse to delete sequences with active enrollments — deleting would
+    // orphan those enrollments and break the E2E email flow.
+    const [activeCheck] = await db
+      .select({ total: count() })
+      .from(sequenceEnrollments)
+      .where(
+        and(
+          eq(sequenceEnrollments.sequenceId, id),
+          eq(sequenceEnrollments.status, 'active'),
+        ),
+      )
+
+    if (Number(activeCheck?.total ?? 0) > 0) {
+      throw new BadRequestError(
+        'Cannot delete a sequence with active enrollments. Stop the campaign first.',
+      )
+    }
 
     await db
       .delete(sequences)

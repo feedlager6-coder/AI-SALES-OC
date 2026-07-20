@@ -29,6 +29,7 @@ import {
   sequenceEnrollments,
   sequences,
   contacts,
+  companies,
 } from '@ai-sales-os/db'
 import { eq, and } from 'drizzle-orm'
 import { registry } from '@ai-sales-os/plugins'
@@ -214,11 +215,21 @@ async function sendEmail(payload: SendEmailPayload): Promise<void> {
     ? await db.query.contacts.findFirst({ where: eq(contacts.id, contactId) })
     : null
 
-  // Build send params
-  const toEmail = contact?.email ?? ''
+  // Determine recipient email: contact email → company emails array → give up
+  let toEmail = contact?.email ?? ''
+  if (!toEmail && enrollment.companyId) {
+    // Fallback: use the first email address stored directly on the company record.
+    // This allows E2E outreach even when no contact record has been created yet.
+    const companyRecord = await db.query.companies.findFirst({
+      where: eq(companies.id, enrollment.companyId),
+      columns: { emails: true },
+    })
+    toEmail = companyRecord?.emails?.[0] ?? ''
+  }
+
   if (!toEmail) {
-    logger.warn({ event: 'email.no_recipient_email', enrollmentId, contactId })
-    // Mark enrollment as stopped (no contact email)
+    logger.warn({ event: 'email.no_recipient_email', enrollmentId, contactId, companyId: enrollment.companyId })
+    // Mark enrollment as stopped (no email address found anywhere)
     await db
       .update(sequenceEnrollments)
       .set({ status: 'stopped' })

@@ -1,11 +1,12 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api-client'
+import { api, type Campaign } from '@/lib/api-client'
 import {
   Building2, Sparkles, Mail, MessageSquare,
   TrendingUp, Target, BarChart3,
 } from 'lucide-react'
+import Link from 'next/link'
 
 function MetricCard({
   title,
@@ -229,6 +230,9 @@ export default function AnalyticsPage() {
         </section>
       )}
 
+      {/* Per-campaign breakdown */}
+      <CampaignBreakdown />
+
       {/* Coming soon */}
       <section className="space-y-4">
         <div className="flex items-center gap-2">
@@ -240,9 +244,9 @@ export default function AnalyticsPage() {
             { title: 'Динамика отправок', desc: 'График отправок по дням и неделям' },
             { title: 'Анализ открытий', desc: 'Время и частота открытия писем' },
             { title: 'Эффективность по отраслям', desc: 'Reply rate в разрезе отраслей' },
-            { title: 'Воронка по кампаниям', desc: 'Сравнение кампаний между собой' },
             { title: 'Лучшие темы писем', desc: 'Тема с наивысшим open rate' },
             { title: 'География лидов', desc: 'Распределение компаний по регионам' },
+            { title: 'AI-персонализация', desc: 'Эффект AI vs шаблон на reply rate' },
           ].map(({ title, desc }) => (
             <div
               key={title}
@@ -258,5 +262,119 @@ export default function AnalyticsPage() {
         </div>
       </section>
     </div>
+  )
+}
+
+// ─── Per-campaign breakdown ────────────────────────────────────────────────────
+
+const CAMP_STATUS: Record<string, string> = {
+  draft: 'Черновик', active: 'Активна', paused: 'Пауза',
+  completed: 'Завершена', archived: 'Архив',
+}
+const CAMP_COLOR: Record<string, string> = {
+  draft: 'text-slate-400',
+  active: 'text-emerald-400',
+  paused: 'text-yellow-400',
+  completed: 'text-blue-400',
+  archived: 'text-gray-400',
+}
+
+function CampaignBreakdown() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['campaigns-analytics'],
+    queryFn: () => api.campaigns.list({ limit: 50 }),
+    staleTime: 60_000,
+  })
+
+  const campaigns: Campaign[] = data?.data ?? []
+
+  // Only show campaigns that have any activity
+  const activeCampaigns = campaigns.filter(
+    (c) => c.stats.enrolled > 0 || c.stats.sent > 0,
+  )
+
+  if (!isLoading && activeCampaigns.length === 0) return null
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Target className="h-4 w-4 text-muted-foreground" />
+        <h2 className="text-base font-semibold text-foreground">Кампании</h2>
+      </div>
+      <div className="rounded-xl border border-border bg-card overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
+          <thead className="border-b border-border bg-muted/30">
+            <tr>
+              {['Кампания', 'Статус', 'Зачислено', 'Отправлено', 'Открыто', 'Нажато', 'Ответило'].map(
+                (h) => (
+                  <th
+                    key={h}
+                    className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap"
+                  >
+                    {h}
+                  </th>
+                ),
+              )}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {isLoading
+              ? Array.from({ length: 3 }).map((_, i) => (
+                  <tr key={i}>
+                    {Array.from({ length: 7 }).map((__, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <div className="h-4 w-16 animate-pulse rounded bg-muted" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              : activeCampaigns.map((c) => {
+                  const openRate =
+                    c.stats.sent > 0
+                      ? Math.round((c.stats.opened / c.stats.sent) * 100)
+                      : 0
+                  const replyRate =
+                    c.stats.sent > 0
+                      ? Math.round((c.stats.replied / c.stats.sent) * 100)
+                      : 0
+                  return (
+                    <tr key={c.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3 font-medium text-foreground max-w-[200px]">
+                        <Link
+                          href={`/campaigns/${c.id}`}
+                          className="hover:text-primary transition-colors truncate block"
+                        >
+                          {c.name}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-medium ${CAMP_COLOR[c.status] ?? 'text-muted-foreground'}`}>
+                          {CAMP_STATUS[c.status] ?? c.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center text-foreground">{c.stats.enrolled}</td>
+                      <td className="px-4 py-3 text-center text-foreground">{c.stats.sent}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="text-foreground">{c.stats.opened}</span>
+                        {c.stats.sent > 0 && (
+                          <span className="ml-1 text-xs text-muted-foreground">({openRate}%)</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center text-foreground">{c.stats.clicked}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={c.stats.replied > 0 ? 'text-emerald-400 font-medium' : 'text-foreground'}>
+                          {c.stats.replied}
+                        </span>
+                        {c.stats.sent > 0 && (
+                          <span className="ml-1 text-xs text-muted-foreground">({replyRate}%)</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }

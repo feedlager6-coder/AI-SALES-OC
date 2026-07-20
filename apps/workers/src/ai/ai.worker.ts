@@ -7,7 +7,7 @@
  */
 import { Worker, type ConnectionOptions } from 'bullmq'
 import { and, eq, sql } from 'drizzle-orm'
-import { getDb, sequenceEnrollments, aiLogs, sequences, campaigns } from '@ai-sales-os/db'
+import { getDb, sequenceEnrollments, aiLogs, sequences, campaigns, emailSends } from '@ai-sales-os/db'
 import { createLogger } from '@ai-sales-os/logger'
 import { getRedisConnection, QUEUES, JOBS } from '@ai-sales-os/queue'
 import type { GenerateEmailPayload, ClassifyReplyPayload } from '@ai-sales-os/queue'
@@ -126,6 +126,20 @@ export function startAiWorker() {
               eq(sequenceEnrollments.workspaceId, payload.workspaceId),
             ),
           )
+
+        // Set repliedAt on the email send record so workspace stats (replyRate)
+        // can accurately count replies via emailSends.repliedAt
+        if (payload.emailSendId) {
+          await db
+            .update(emailSends)
+            .set({ repliedAt: new Date() })
+            .where(
+              and(
+                eq(emailSends.id, payload.emailSendId),
+                eq(emailSends.workspaceId, payload.workspaceId),
+              ),
+            )
+        }
 
         // Increment campaign replied counter
         await incrementCampaignStat(payload.enrollmentId, 'replied')

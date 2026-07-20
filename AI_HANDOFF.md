@@ -1,7 +1,7 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** Sprint 1.6 Complete (2026-07-20)
-> **Next sprint:** Sprint 1.7 — TBD (see follow-up tasks)
+> **Last updated:** Sprint 1.7 Complete (2026-07-20)
+> **Next sprint:** Sprint 1.8 — TBD (see follow-up tasks)
 
 ---
 
@@ -71,7 +71,93 @@ ai-sales-os/
 | 1.4 | ✅ Complete | Outreach — campaigns, sequences, email accounts, sending worker, webhooks |
 | 1.5 | ✅ Complete | Dashboard stats, ZodError → 400, rate limiting, contacts page, analytics page, sequence builder UI, ConfirmDialogs |
 | QA | ✅ Complete | Pre-Sprint 1.6 audit — 6 bugs fixed (2 P0, 4 P1) |
-| **1.6** | **✅ Complete** | AI email generation (OpenAI), reply classifier, campaign stats, sequence builder UX |
+| 1.6 | ✅ Complete | AI email generation (OpenAI), reply classifier, campaign stats, sequence builder UX |
+| **1.7** | **✅ Complete** | E2E outreach flow wired end-to-end: enrollment dispatches jobs, reply stats fixed, delete guard, analytics breakdown |
+
+---
+
+## ════════════════════════════════════════════
+## SPRINT 1.7 DELIVERABLES (2026-07-20)
+## ════════════════════════════════════════════
+
+Sprint 1.7 closes the last critical gaps in the E2E outreach flow: enrollment now actually
+starts email sending, reply stats are accurate, campaign stats cover clicks, the sequence
+delete is guarded, and the analytics page shows per-campaign breakdowns.
+
+### Critical E2E Fix — Enrollment → SEND_EMAIL job dispatch
+
+**File:** `apps/api/src/routes/campaigns.ts`
+
+The `POST /api/campaigns/:id/enroll` endpoint was inserting DB records but **never dispatching
+BullMQ jobs**, so enrolled companies never received any emails. Fixed:
+
+- After batch insert of `sequenceEnrollments`, the endpoint now calls `getEmailQueue().add(JOBS.SEND_EMAIL, ...)` for each new enrollment.
+- Uses the first active email account for the workspace (workspace-scoped, no cross-tenant leakage).
+- Falls back gracefully: if no email account is configured, logs a warning but still returns 201 (enrollment persisted).
+- Job IDs are deterministic via `makeJobId()` — deduplication is automatic on retry.
+
+### Reply Stats Fixed
+
+**Files:** `apps/api/src/routes/webhooks.ts`, `apps/workers/src/ai/ai.worker.ts`
+
+`emailSends.repliedAt` was never being set, so `workspace.stats.repliesCount` was always 0.
+Now fixed in two places for redundancy:
+
+1. **Webhook `replied` event** — adds `case 'replied': updates.repliedAt = timestamp` to the `emailSends` update switch.
+2. **CLASSIFY_REPLY job** — after updating `sequenceEnrollments.replyAt`, also sets `emailSends.repliedAt = new Date()`.
+
+The workspace stats query (`WHERE email_sends.replied_at IS NOT NULL`) now returns real counts.
+
+### Campaign `clicked` Stat
+
+**File:** `apps/api/src/routes/webhooks.ts`
+
+- `incrementCampaignStat` type extended to include `'clicked'`.
+- Webhook `clicked` event now calls `incrementCampaignStat(enrollmentId, 'clicked')` — de-duped to first click per send (mirrors the existing `opened` pattern).
+
+### Email Worker — Company Email Fallback
+
+**File:** `apps/workers/src/email/email.worker.ts`
+
+- Import `companies` added from `@ai-sales-os/db`.
+- When `contactId` is empty/absent, the worker now falls back to `company.emails[0]` before giving up.
+- This makes the E2E flow work for companies that have email addresses in their company record without needing a separate contact entity.
+
+### Sequence Delete Guard
+
+**File:** `apps/api/src/routes/sequences.ts`
+
+- Import `sequenceEnrollments` added.
+- Before deleting, queries `COUNT(*) WHERE sequenceId = :id AND status = 'active'`.
+- Returns `400 BAD_REQUEST` with a clear message when active enrollments exist.
+- **New test:** `tests/routes/sequences.test.ts` — "blocks delete when active enrollments exist" case.
+
+### Analytics Page — Per-Campaign Breakdown
+
+**File:** `apps/web/src/app/(dashboard)/analytics/page.tsx`
+
+- New `CampaignBreakdown` component using `useQuery` → `api.campaigns.list()`.
+- Shows campaigns with any activity (enrolled > 0 OR sent > 0) in a sortable table.
+- Columns: Campaign name (link to detail), Status, Enrolled, Sent, Opened (+ open rate %), Clicked, Replied (+ reply rate %).
+- Skeleton loading state; hidden when no active campaigns.
+
+### Verification
+
+- TypeScript: `pnpm turbo run typecheck` → ✅ 0 errors (17 packages)
+- Lint: `pnpm turbo run lint` → ✅ 0 errors (1 pre-existing non-null warning in contacts.ts)
+- Tests: `pnpm turbo run test` → ✅ **27/27** (+1 new guard test vs Sprint 1.6's 26)
+- Both workflows: API (3001) + Web (5000) → ✅ running
+
+### Remaining tech debt (carry forward)
+
+| ID | Priority | Description |
+|----|----------|-------------|
+| TD-001 | P2 | No soft-delete on campaigns, sequences, email_accounts |
+| TD-003 | P2 | ICP scoring logic duplicated in api + workers packages |
+| TD-004 | P2 | Path params `:id` not UUID-validated before DB queries |
+| TD-006 | P2 | `email_sends.workspaceId` has no FK constraint |
+| SEC-005 | P2 | No CSP headers configured |
+| TD-007 | P3 | Single `contactId` per batch enrollment — large campaigns need per-company contacts |
 
 ---
 

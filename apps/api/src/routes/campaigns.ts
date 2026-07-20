@@ -22,7 +22,9 @@ import {
   companies,
   sequences,
   sequenceEnrollments,
+  emailAccounts,
 } from '@ai-sales-os/db'
+import { getEmailQueue, JOBS, makeJobId } from '@ai-sales-os/queue'
 import { workspaceContextPlugin } from '../plugins/workspace-context.js'
 import { NotFoundError, BadRequestError } from '@ai-sales-os/errors'
 import { createLogger } from '@ai-sales-os/logger'
@@ -435,7 +437,65 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
         )`,
         updatedAt: new Date(),
       })
-      .where(eq(campaigns.id, id))
+      .where(and(eq(campaigns.id, id), eq(campaigns.workspaceId, request.workspaceId)))
+
+    // ── Dispatch SEND_EMAIL jobs for each new enrollment ────────────────────────
+    // Only dispatch when new enrollments were actually inserted and the sequence
+    // has at least one step. Idempotent: BullMQ jobId deduplicates on conflict.
+    if (enrolled > 0 && seq.steps) {
+      type SimpleStep = { stepNumber: number; type: 'email' | 'wait' }
+      const steps = (seq.steps as SimpleStep[]).sort((a, b) => a.stepNumber - b.stepNumber)
+      const firstStep = steps[0]
+
+      if (firstStep) {
+        // Find first active email account for this workspace
+        const account = await db.query.emailAccounts.findFirst({
+          where: and(
+            eq(emailAccounts.workspaceId, request.workspaceId),
+            eq(emailAccounts.isActive, true),
+          ),
+          columns: { id: true },
+        })
+
+        if (account) {
+          const emailQueue = getEmailQueue()
+          await Promise.all(
+            inserted.map(({ id: enrollmentId }) =>
+              emailQueue.add(
+                JOBS.SEND_EMAIL,
+                {
+                  workspaceId: request.workspaceId,
+                  enrollmentId,
+                  stepNumber: firstStep.stepNumber,
+                  contactId: body.contactId ?? '',
+                  emailAccountId: account.id,
+                  scheduledAt: new Date().toISOString(),
+                },
+                {
+                  jobId: makeJobId(JOBS.SEND_EMAIL, enrollmentId, String(firstStep.stepNumber)),
+                  // Configurable per-job retry
+                  attempts: 3,
+                  backoff: { type: 'exponential', delay: 30_000 },
+                },
+              ),
+            ),
+          )
+          logger.info({
+            event: 'campaign.email_jobs_dispatched',
+            campaignId: id,
+            enrolled,
+            firstStep: firstStep.stepNumber,
+            emailAccountId: account.id,
+          })
+        } else {
+          logger.warn({
+            event: 'campaign.no_active_email_account',
+            campaignId: id,
+            workspaceId: request.workspaceId,
+          })
+        }
+      }
+    }
 
     logger.info({
       event: 'campaign.enrolled',
