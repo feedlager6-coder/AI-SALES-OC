@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   Plus, Play, Pause, Square, Mail, ChevronRight,
 } from 'lucide-react'
@@ -52,12 +53,14 @@ function CreateCampaignModal({ open, onClose }: { open: boolean; onClose: () => 
     mutationFn: (body: CreateCampaignBody) => api.campaigns.create(body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      toast.success('Кампания создана')
       onClose()
       setName('')
       setDailyLimit(50)
     },
     onError: (err: Error) => {
       setError(err.message)
+      toast.error(err.message)
     },
   })
 
@@ -150,17 +153,20 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 
   const startMutation = useMutation({
     mutationFn: () => api.campaigns.start(campaign.id),
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaigns'] }) },
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Кампания запущена') },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   const pauseMutation = useMutation({
     mutationFn: () => api.campaigns.pause(campaign.id),
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaigns'] }) },
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Кампания приостановлена') },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   const stopMutation = useMutation({
     mutationFn: () => api.campaigns.stop(campaign.id),
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaigns'] }) },
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Кампания остановлена') },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   const stats = campaign.stats

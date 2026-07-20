@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, eq, isNull, desc, ilike, count, or, sql, gte, lte, type SQL } from 'drizzle-orm'
+import { and, eq, isNull, desc, ilike, count, or, sql, gte, lte, inArray, type SQL } from 'drizzle-orm'
 import { getDb, companies, contacts, activities } from '@ai-sales-os/db'
 import type { CompanyStatus } from '@ai-sales-os/types'
 import { CompanyNotFoundError, CompanyDuplicateError } from '@ai-sales-os/errors'
@@ -384,39 +384,52 @@ export const companiesRoutes: FastifyPluginAsync = async (app) => {
     let skipped = 0
     const errors: Array<{ index: number; reason: string }> = []
 
+    // ── Bulk dedup check — 2 queries instead of N*2 ───────────────────────────
+    const batchInns = body.companies
+      .map((c) => c.inn)
+      .filter((v): v is string => Boolean(v))
+
+    const batchDomains = body.companies
+      .map((c) => c.domain)
+      .filter((v): v is string => Boolean(v))
+
+    const [existingInnRows, existingDomainRows] = await Promise.all([
+      batchInns.length > 0
+        ? db
+            .select({ inn: companies.inn })
+            .from(companies)
+            .where(
+              and(
+                eq(companies.workspaceId, request.workspaceId),
+                inArray(companies.inn, batchInns),
+                isNull(companies.deletedAt),
+              ),
+            )
+        : Promise.resolve([]),
+      batchDomains.length > 0
+        ? db
+            .select({ domain: companies.domain })
+            .from(companies)
+            .where(
+              and(
+                eq(companies.workspaceId, request.workspaceId),
+                inArray(companies.domain, batchDomains),
+                isNull(companies.deletedAt),
+              ),
+            )
+        : Promise.resolve([]),
+    ])
+
+    // O(1) lookup sets — pre-populated from DB + updated as we insert
+    const usedInns = new Set(existingInnRows.map((r) => r.inn).filter(Boolean) as string[])
+    const usedDomains = new Set(existingDomainRows.map((r) => r.domain).filter(Boolean) as string[])
+
     for (let i = 0; i < body.companies.length; i++) {
       const row = body.companies[i]
       try {
-        // Skip duplicates by INN or domain
-        if (row.inn) {
-          const existing = await db.query.companies.findFirst({
-            where: and(
-              eq(companies.workspaceId, request.workspaceId),
-              eq(companies.inn, row.inn),
-              isNull(companies.deletedAt),
-            ),
-            columns: { id: true },
-          })
-          if (existing) {
-            skipped++
-            continue
-          }
-        }
-
-        if (row.domain) {
-          const existing = await db.query.companies.findFirst({
-            where: and(
-              eq(companies.workspaceId, request.workspaceId),
-              eq(companies.domain, row.domain),
-              isNull(companies.deletedAt),
-            ),
-            columns: { id: true },
-          })
-          if (existing) {
-            skipped++
-            continue
-          }
-        }
+        // Skip duplicates — O(1) Set lookup
+        if (row.inn && usedInns.has(row.inn)) { skipped++; continue }
+        if (row.domain && usedDomains.has(row.domain)) { skipped++; continue }
 
         const icpScore = computeIcpScore(row as Record<string, unknown>)
         const suggestedStatus = icpScoreToStatus(icpScore, 'new')
@@ -429,6 +442,11 @@ export const companiesRoutes: FastifyPluginAsync = async (app) => {
           icpScore,
           source: 'csv',
         })
+
+        // Track newly inserted identifiers to prevent intra-batch duplicates
+        if (row.inn) usedInns.add(row.inn)
+        if (row.domain) usedDomains.add(row.domain)
+
         imported++
       } catch (err) {
         errors.push({

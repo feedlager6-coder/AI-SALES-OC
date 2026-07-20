@@ -6,7 +6,15 @@ import { getAuth } from '../plugins/auth.js'
  * Better Auth handles: /sign-in/email, /sign-up/email, /sign-out, /session, etc.
  */
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  app.all('/*', async (request, reply) => {
+  // Stricter rate limit for auth endpoints (sign-in brute-force protection)
+  app.all('/*', {
+    config: {
+      rateLimit: {
+        max: 15,
+        timeWindow: '1 minute',
+      },
+    },
+  }, async (request, reply) => {
     const auth = getAuth()
 
     // Convert Fastify request to Web API Request for Better Auth

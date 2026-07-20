@@ -3,6 +3,7 @@ import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import cookie from '@fastify/cookie'
+import { ZodError } from 'zod'
 import { getEnv } from '@ai-sales-os/config'
 import { createLogger } from '@ai-sales-os/logger'
 import { isAppError } from '@ai-sales-os/errors'
@@ -49,12 +50,14 @@ export async function buildApp() {
   })
 
   await app.register(rateLimit, {
+    global: true,
     max: 200,
     timeWindow: '1 minute',
-    errorResponseBuilder: () => ({
+    // Per-route overrides are set via route `config.rateLimit`
+    errorResponseBuilder: (_request, context) => ({
       error: {
         code: 'RATE_LIMITED',
-        message: 'Too many requests, please slow down',
+        message: `Too many requests — retry after ${Math.ceil(context.ttl / 1000)}s`,
         statusCode: 429,
       },
     }),
@@ -66,30 +69,48 @@ export async function buildApp() {
 
   // ─── Error Handler ─────────────────────────────────────────────────────────
 
-  app.setErrorHandler((error: FastifyError, _request, reply) => {
+  app.setErrorHandler((error: FastifyError | Error, _request, reply) => {
     if (isAppError(error)) {
       logger.warn({
         event: 'request.error',
-        code: error.code,
-        statusCode: error.statusCode,
+        code: (error as { code: string }).code,
+        statusCode: (error as { statusCode: number }).statusCode,
         message: error.message,
       })
-      return reply.status(error.statusCode).send(error.toJSON())
+      return reply
+        .status((error as { statusCode: number }).statusCode)
+        .send((error as { toJSON: () => unknown }).toJSON())
     }
 
-    // Fastify validation error
-    if (error.validation) {
+    // Zod validation error — routes that call z.schema.parse() throw this
+    if (error instanceof ZodError) {
+      logger.debug({ event: 'request.zod_error', issues: error.issues })
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: error.issues[0]?.message ?? 'Validation error',
+          statusCode: 400,
+          issues: error.issues.map((i) => ({
+            path: i.path.join('.'),
+            message: i.message,
+          })),
+        },
+      })
+    }
+
+    // Fastify JSON-schema validation error (ajv)
+    if ((error as FastifyError).validation) {
       return reply.status(400).send({
         error: {
           code: 'VALIDATION_ERROR',
           message: 'Request validation failed',
           statusCode: 400,
-          details: error.validation,
+          details: (error as FastifyError).validation,
         },
       })
     }
 
-    // Unexpected error — FastifyError always has .message and .stack
+    // Unexpected error
     logger.error({
       event: 'request.unhandled_error',
       error: error.message,

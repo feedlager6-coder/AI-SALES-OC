@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Plus, Trash2, Mail, CheckCircle, XCircle } from 'lucide-react'
 import { api, type EmailAccount, type CreateEmailAccountBody } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -24,12 +25,14 @@ function AddEmailAccountModal({ open, onClose }: { open: boolean; onClose: () =>
     mutationFn: (body: CreateEmailAccountBody) => api.emailAccounts.create(body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['email-accounts'] })
+      toast.success('Email аккаунт добавлен')
       onClose()
       setForm({ email: '', displayName: '', provider: 'mailgun', apiKey: '', domain: '', dailyLimit: 50 })
       setError(null)
     },
     onError: (err: Error) => {
       setError(err.message)
+      toast.error(err.message)
     },
   })
 
@@ -199,13 +202,21 @@ function EmailAccountCard({ account }: { account: EmailAccount }) {
 
   const deleteMutation = useMutation({
     mutationFn: () => api.emailAccounts.delete(account.id),
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['email-accounts'] }) },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['email-accounts'] })
+      toast.success('Email аккаунт удалён')
+    },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   const toggleMutation = useMutation({
     mutationFn: (isActive: boolean) =>
       api.emailAccounts.update(account.id, { isActive }),
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['email-accounts'] }) },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['email-accounts'] })
+      toast.success(account.isActive ? 'Аккаунт отключён' : 'Аккаунт активирован')
+    },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   return (

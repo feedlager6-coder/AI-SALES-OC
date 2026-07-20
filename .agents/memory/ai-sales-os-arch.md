@@ -49,3 +49,12 @@ Two fixes were needed to make Better Auth's Drizzle adapter work with our schema
 
 ## Architecture Audit Readiness Score
 Before audit: 42/100. After documentation round: 81/100. Remaining gaps documented in `docs/00-audit-report.md`.
+
+## Sprint 1.5 Status: Complete
+All P0 and P1 tasks shipped. Quality gates: typecheck 17/17, lint 9/9, build 10/10, tests 26/26.
+
+P0: ZodError→400 handler in `app.ts`; `/api/workspaces/stats` endpoint (4 parallel COUNT queries); dashboard client component with real data; auth rate-limit 15/min via `config.rateLimit` route option.
+
+P1: AI email writer + reply classifier (OpenAI gpt-4o-mini + keyword/template fallback when key absent); campaign detail page with inline sequence step editor at `/campaigns/[id]`; sonner toasts in all mutation callbacks; companies import N+1 fixed with bulk `inArray` dedup + intra-batch Set tracking.
+
+**Why recorded:** Helps future-you know what Sprint 1.5 delivered so you don't re-implement or duplicate it in 1.6.

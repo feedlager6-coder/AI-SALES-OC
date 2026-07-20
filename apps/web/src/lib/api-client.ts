@@ -452,6 +452,16 @@ export const api = {
   // Workspace
   workspace: {
     me: () => request<{ data: { id: string; name: string; plan: string } }>('/api/workspaces/me'),
+    stats: () =>
+      request<{
+        data: {
+          totalCompanies: number
+          enrichedCompanies: number
+          emailsSent30d: number
+          replyRate: number
+          repliesCount: number
+        }
+      }>('/api/workspaces/stats'),
   },
 }
 
