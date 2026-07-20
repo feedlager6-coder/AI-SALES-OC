@@ -24,18 +24,22 @@ Must include `http://localhost:5000` (Next.js dev server) in addition to Replit 
 ## baseURL in auth client
 `NEXT_PUBLIC_API_URL=""` (empty string). Use `||` not `??` for fallback: `process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'`. The `??` operator does not treat empty string as nullish.
 
-## additionalFields for transient registration data (workspaceName trap)
-If a field is declared in `user.additionalFields` with a `fieldName`, Better Auth maps it to a DB column and tries to INSERT it. Fields used only transiently during registration (e.g. `workspaceName` — used to name the workspace, then discarded) must be **stripped from the returned data** in `databaseHooks.user.create.before`.
+## additionalFields require a DB column — the workspaceName fix
+Better Auth's `additionalFields` serve dual purpose: (1) accept field from client body, (2) write it to the DB. **Every declared additionalField must have a corresponding DB column.**
 
-Pattern:
-```ts
-const { workspaceName: _drop, ...restUserData } = userData as typeof userData & { workspaceName?: string }
-return { data: { ...restUserData, workspaceId: workspace.id, role: 'owner' } }
+The merge behavior that prevents hooks from stripping fields:
+```
+actualData = { ...originalClientData, workspaceName: "My Company" }
+result.data = { ...restUserData, workspaceId, role }  // workspaceName stripped
+merged = { ...actualData, ...result.data }  // workspaceName survives from actualData!
 ```
 
-Spreading `...userData` in the return includes the transient field → Better Auth attempts INSERT on a non-existent column → `BetterAuthError: The field "workspaceName" does not exist in the "user" Drizzle schema`.
+**Fix:** Add a nullable `workspace_name varchar(255)` column to the users table. Better Auth can then INSERT the field without error. The value is stored harmlessly as reference data.
 
-**Why:** `additionalFields` serves dual purpose: (1) accept field from client body, (2) write it to DB. If you only need (1), you must explicitly exclude it from the hook's return.
+**Why databaseHooks can't strip it:** Better Auth internally does `actualData = { ...actualData, ...result.data }` after the hook runs. Removing a key from `result.data` does NOT remove it from the merged object if it was in `actualData` originally.
+
+**Migration:** `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "workspace_name" varchar(255);`
+Drizzle schema: add `workspaceName: varchar('workspace_name', { length: 255 })` to the users table.
 
 ## DB migrations
-Tables do not exist on a fresh Replit environment. Must run `cd packages/db && pnpm run db:migrate` before the API can serve any auth requests.
+Tables do not exist on a fresh Replit environment. Must run `cd packages/db && pnpm run db:migrate` before the API can serve any auth requests. DATABASE_URL is runtime-managed (injected automatically) — do NOT set it manually.

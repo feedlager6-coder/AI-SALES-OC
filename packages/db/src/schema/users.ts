@@ -30,6 +30,10 @@ export const users = pgTable(
     avatarUrl: text('avatar_url'),
     telegramChatId: bigint('telegram_chat_id', { mode: 'bigint' }),
     status: userStatusEnum('status').notNull().default('active'),
+    // Captured from the registration form via Better Auth additionalFields.
+    // Better Auth requires a DB column for every additionalField it handles.
+    // The value is used by databaseHooks to name the first workspace.
+    workspaceName: varchar('workspace_name', { length: 255 }),
     invitedBy: uuid('invited_by'),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),

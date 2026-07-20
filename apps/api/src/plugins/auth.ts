@@ -146,17 +146,13 @@ export function getAuth(): AuthInstance {
               email: userData.email,
             })
 
-            // Strip workspaceName before returning — it was only needed to
-            // name the workspace and has no column in the users table.
-            // Spreading ...userData would include it and cause Better Auth to
-            // attempt an INSERT on a non-existent column.
-            const { workspaceName: _drop, ...restUserData } = userData as typeof userData & {
-              workspaceName?: string
-            }
-
+            // workspaceName is declared in additionalFields and has a
+            // corresponding workspace_name column in users (nullable).
+            // Better Auth merges { ...originalData, ...result.data }, so we
+            // cannot strip it here. The column absorbs the value harmlessly.
             return {
               data: {
-                ...restUserData,
+                ...userData,
                 workspaceId: workspace.id,
                 role: 'owner',
               },
