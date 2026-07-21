@@ -5,6 +5,43 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## RC1 Complete — Contacts Workspace Isolation + Quality Gate (2026-07-21)
+
+Closes the incomplete security fix from Sprint 1.7 and confirms RC1 is fully green.
+No new features added.
+
+### Security fix: Contacts API regression test
+
+- **`apps/api/tests/routes/contacts.test.ts`** — New test file (21 tests) covering
+  workspace isolation across all 5 contacts endpoints:
+  - `GET /` — list: pagination, empty state, companyId filter, search param
+  - `GET /:id` — own workspace → 200; other workspace → 404 (no info leak); soft-deleted → 404
+  - `POST /` — workspace assignment; cross-workspace company → 400; duplicate email → 400; no company
+  - `PATCH /:id` — own workspace → 200; other workspace → 404; duplicate email → 400
+  - `DELETE /:id` — own workspace → 204; other workspace → 404; already deleted → 404
+  - Summary suite: 4 explicit cross-workspace isolation checks
+
+  The implementation uses a thenable mock chain pattern to handle Drizzle's
+  `Promise.all([rowQuery, countQuery])` list pattern without a real DB connection.
+
+### Lint fix: contacts.ts non-null assertion
+
+- **`apps/api/src/routes/contacts.ts`** — Replaced `or(...)!` non-null assertion (line 56)
+  with a guarded `if (searchExpr) conditions.push(searchExpr)` pattern.
+  Result: 0 ESLint warnings (was 1 pre-existing warning).
+
+### RC1 Quality Gate — Final Results
+
+| Check | Result |
+|-------|--------|
+| `pnpm turbo run typecheck` | ✅ 17/17 packages, 0 errors |
+| `pnpm turbo run lint` | ✅ 9/9 packages, 0 errors, **0 warnings** |
+| `pnpm turbo run test` | ✅ **48/48 tests** (3 test files) |
+| Workflows | ✅ API (3001) + Web (5000) healthy |
+| Smoke test | ✅ All 6 UI pages render; API auth enforced |
+
+---
+
 ## Sprint 1.7 — E2E Outreach Flow Completion (2026-07-20)
 
 Sprint 1.7 closes the critical gap that prevented any emails from being sent after enrollment,

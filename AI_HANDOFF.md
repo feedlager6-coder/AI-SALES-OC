@@ -1,7 +1,7 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** Sprint 1.7 Complete (2026-07-20)
-> **Next sprint:** Sprint 1.8 — TBD (see follow-up tasks)
+> **Last updated:** RC1 Complete + RC2 Plan (2026-07-21)
+> **Next milestone:** RC2 — Real Integration Wiring
 
 ---
 
@@ -668,6 +668,198 @@ Use the omit-if-falsy pattern (`if (x) payload.x = x`) when building API payload
 | Campaigns page | `apps/web/src/app/(dashboard)/campaigns/page.tsx` |
 | Settings page | `apps/web/src/app/(dashboard)/settings/page.tsx` |
 | ICP rules | `verticals/transport/icp.yaml` |
+
+---
+
+## ════════════════════════════════════════════
+## RC1 COMPLETE — Quality Gate (2026-07-21)
+## ════════════════════════════════════════════
+
+### Security fix completed: Contacts API workspace isolation
+
+The incomplete security fix from Sprint 1.7 has been closed:
+- `apps/api/src/routes/contacts.ts` — workspace isolation was already implemented across all 5
+  endpoints (GET list, GET /:id, POST, PATCH /:id, DELETE /:id). The remaining gap was the
+  **absence of a regression test file**.
+- `apps/api/tests/routes/contacts.test.ts` — **new file, 21 tests** covering:
+  - GET / list: paginated, empty, companyId filter, search param
+  - GET /:id: own workspace → 200, other workspace → 404, soft-deleted → 404
+  - POST /: workspace assignment, cross-workspace company rejection (400), email duplicate (400), no company
+  - PATCH /:id: own workspace → 200, other workspace → 404, email duplicate → 400
+  - DELETE /:id: own workspace → 204, other workspace → 404, already deleted → 404
+  - Summary suite: 4 explicit cross-workspace checks (404 = no info leak, no mutation possible)
+- Lint fix: `or()` non-null assertion in `contacts.ts:56` replaced with a guarded `if (searchExpr)`
+  pattern — 0 warnings now (was 1 warning).
+
+### RC1 Quality Gate — Final Results
+
+| Check | Result | Detail |
+|-------|--------|--------|
+| `pnpm turbo run typecheck` | ✅ 0 errors | 17 packages |
+| `pnpm turbo run lint` | ✅ 0 errors, 0 warnings | 9 packages (was 1 warning) |
+| `pnpm turbo run test` | ✅ **48/48** | +21 contacts tests vs RC0's 27 |
+| Workflows | ✅ Both healthy | API (3001) + Web (5000) |
+| Smoke test UI | ✅ All 6 pages render | Login, Dashboard, Companies, Contacts, Campaigns, Analytics |
+| API endpoints | ✅ Auth enforced | 401 on unauthenticated, correct shapes |
+
+**RC1 is fully green. No new features added.**
+
+---
+
+## ════════════════════════════════════════════
+## RC2 PLAN — Real Integration Wiring
+## ════════════════════════════════════════════
+
+> Scope: connect the already-implemented plugin code to real external APIs.
+> No new features — just secrets, config, and end-to-end wire-up tests.
+
+### Integration Status Matrix
+
+| Integration | Plugin File | Status | Missing |
+|-------------|-------------|--------|---------|
+| **OpenAI** | `apps/workers/src/shared/ai-helpers.ts` | ✅ Real code, gpt-4o-mini | `OPENAI_API_KEY` secret |
+| **Mailgun** | `packages/plugins/src/implementations/email/mailgun.provider.ts` | ✅ Real code, REST API | `MAILGUN_API_KEY` + `MAILGUN_DOMAIN` secrets + DNS setup |
+| **Brevo SMTP** | *(not yet implemented)* | ❌ No provider | New `SmtpPlugin`, `BREVO_API_KEY` / SMTP creds |
+| **2GIS** | `packages/plugins/src/implementations/lead-sources/twogis.provider.ts` | ✅ Real code, Catalog API v3 | `TWOGIS_API_KEY` secret |
+| **HH.ru** | `packages/plugins/src/implementations/lead-sources/hhru.provider.ts` | ✅ Real code, Public API | No key needed (public), but User-Agent must be set |
+| **Hunter.io** | `packages/plugins/src/implementations/enrichment/hunter.provider.ts` | ✅ Real code, v2 API | `HUNTER_API_KEY` secret |
+| **Snov.io** | `packages/plugins/src/implementations/enrichment/snov.provider.ts` | ✅ Real code (domain-search) | `SNOV_API_KEY` secret, person-endpoint missing |
+| **Dadata** | `packages/plugins/src/implementations/enrichment/dadata.provider.ts` | ✅ Real code, ЕГРЮЛ/ЕГРИП | `DADATA_API_KEY` secret |
+
+### Secrets Required for RC2
+
+| Secret / Env Var | Where Used | Free Tier | Registration |
+|------------------|-----------|-----------|--------------|
+| `OPENAI_API_KEY` | AI email personalisation + reply classification | No free tier; gpt-4o-mini ~$0.15/1M tokens | platform.openai.com |
+| `MAILGUN_API_KEY` | Email sending (production) | Flex: 100 emails/day free for 3 months | mailgun.com |
+| `MAILGUN_DOMAIN` | Email sending (sender domain) | Sandbox domain available for testing | mailgun.com |
+| `BREVO_API_KEY` | Alternative SMTP (optional, RC2 stretch) | **300 emails/day free forever** | brevo.com |
+| `TWOGIS_API_KEY` | Lead generation from 2GIS catalog | Free tier: registration required, limited RPS | dev.2gis.ru |
+| `HUNTER_API_KEY` | Email finding (waterfall, priority 1) | **25 searches/month free** | hunter.io |
+| `SNOV_API_KEY` | Email finding (waterfall, priority 2) | Trial credits on signup | snov.io |
+| `DADATA_API_KEY` | Company enrichment via ЕГРЮЛ | **100 requests/day free** | dadata.ru |
+| *(none)* | HH.ru lead source | Public API, no key | hh.ru/api |
+
+> **Quick start for RC2:** `OPENAI_API_KEY` + `HUNTER_API_KEY` + `MAILGUN_API_KEY`/`MAILGUN_DOMAIN`
+> are the three highest-value secrets. Everything else can be added incrementally.
+
+### What's Already Implemented (no code changes needed)
+
+1. **OpenAI AI helpers** (`apps/workers/src/shared/ai-helpers.ts`)
+   - `generatePersonalisedEmail(companyId, template)` — calls gpt-4o-mini, falls back to `{{var}}` substitution
+   - `classifyReplyText(text)` — 5-class classifier (interested/not_now/not_interested/ooo/auto)
+   - Lazy client singleton: just set `OPENAI_API_KEY` and it activates automatically
+
+2. **Mailgun sending** (`packages/plugins/src/implementations/email/mailgun.provider.ts`)
+   - Full `send()` implementation with tracking (opens, clicks)
+   - `parseWebhook()` for Mailgun webhook events
+   - Webhook route already wired: `POST /api/webhooks/mailgun` with HMAC signature validation
+   - Just needs `MAILGUN_API_KEY` + `MAILGUN_DOMAIN` env vars
+
+3. **2GIS lead search** (`packages/plugins/src/implementations/lead-sources/twogis.provider.ts`)
+   - Searches by rubric code + city name → returns companies with address, phone, category
+   - City IDs hardcoded for major Russian cities (Moscow, SPb, Ekb, etc.)
+   - Registered in plugin registry as priority 1 lead source
+
+4. **HH.ru employer search** (`packages/plugins/src/implementations/lead-sources/hhru.provider.ts`)
+   - Public API, no key required
+   - Searches employers with open vacancies → buying signal
+   - Works now (just needs HH.ru to not block the User-Agent)
+
+5. **Hunter.io email finder** (`packages/plugins/src/implementations/enrichment/hunter.provider.ts`)
+   - `findEmail(domain, firstName, lastName)` — email-finder endpoint
+   - `enrichDomain(domain)` — domain-search for all emails at a company
+   - `verifyEmail(email)` — email-verifier
+   - Confidence ≥ 0.3 required to stop the waterfall chain
+
+6. **Dadata enrichment** (`packages/plugins/src/implementations/enrichment/dadata.provider.ts`)
+   - `enrichByInn(inn)` — exact lookup via ЕГРЮЛ/ЕГРИП
+   - `enrichByName(name)` — fuzzy suggest
+   - Returns: full legal name, address, OKVED, headcount, registration date
+
+7. **Plugin registry** (`packages/plugins/src/registry/register-all.ts`)
+   - All plugins registered with priority and category
+   - Circuit breaker (5 failures → 30 min open) already wraps every provider
+   - Waterfall composer: tries priority-1, falls back to priority-2, etc.
+
+### What Needs to Be Done for RC2
+
+#### RC2-01 — Secret injection (30 min)
+Set the following in Replit shared env (via environment-secrets skill):
+```
+OPENAI_API_KEY      = sk-...
+MAILGUN_API_KEY     = ...
+MAILGUN_DOMAIN      = mg.yourdomain.com  (or sandbox-xxx.mailgun.org for testing)
+TWOGIS_API_KEY      = ...
+HUNTER_API_KEY      = ...
+DADATA_API_KEY      = ...
+```
+
+#### RC2-02 — Mailgun domain DNS (30–60 min, user action)
+Mailgun requires DNS records (MX, SPF, DKIM) on the sending domain.
+For testing, use the Mailgun sandbox domain — no DNS setup needed, but can only
+send to verified recipient addresses.
+- Action: add verified recipient emails in Mailgun dashboard for sandbox testing
+
+#### RC2-03 — Brevo SMTP plugin (optional, 2h)
+Brevo's 300 emails/day free tier is better for early-stage than Mailgun's 100/day.
+Implement `packages/plugins/src/implementations/email/brevo.provider.ts`:
+```typescript
+// SMTP via nodemailer or Brevo REST API
+// Interface: IEmailSendingPlugin (same as Mailgun)
+// Env vars: BREVO_API_KEY
+// Register in register-all.ts as priority 2 (Mailgun stays priority 1)
+```
+Webhook tracking for Brevo requires a different event schema than Mailgun's — new
+`parseWebhook()` branch needed in `apps/api/src/routes/webhooks.ts`.
+
+#### RC2-04 — End-to-end smoke test with real keys (1h)
+After secrets are set:
+1. Register account → creates workspace
+2. Add email account in Settings (uses encrypted credentials)
+3. Create company manually or import CSV
+4. Trigger enrichment → Dadata should populate fields
+5. Use "Найти компании" → 2GIS + HH.ru should return results
+6. Create campaign → add sequence → enroll company
+7. Workers dispatch `SEND_EMAIL` → Mailgun sends real email
+8. Check Mailgun logs → verify delivered/opened events hit `/api/webhooks/mailgun`
+9. Check analytics page → stats should update
+
+#### RC2-05 — Snov.io person-based email finder (2h)
+Current implementation only uses `get-emails-from-url` (domain-search).
+The person-based endpoint (`/v1/get-emails-from-names`) gives higher quality results.
+File: `packages/plugins/src/implementations/enrichment/snov.provider.ts`
+Add `findEmail(domain, firstName, lastName)` method calling the names endpoint.
+
+#### RC2-06 — Webhook HMAC hardening (1h)
+Current Mailgun webhook handler validates field presence but not the full HMAC-SHA256
+signature as Mailgun's docs specify. File: `apps/api/src/routes/webhooks.ts`
+The existing skeleton has the right structure — just needs the crypto verification call.
+
+#### RC2-07 — 2GIS dynamic city lookup (1h)
+Currently `CITY_IDS` is a hardcoded map for ~10 major cities.
+Small/mid cities not in the map fall back to no results.
+File: `packages/plugins/src/implementations/lead-sources/twogis.provider.ts`
+Add a `/3.0/suggest/geo` call to resolve city names to IDs dynamically.
+
+### RC2 Priority Order
+
+```
+P0 (blocks all real sending):
+  RC2-01 — Set secrets
+  RC2-02 — Mailgun DNS / sandbox setup
+
+P1 (validates the full E2E flow):
+  RC2-04 — End-to-end smoke test with real keys
+
+P2 (improves coverage):
+  RC2-03 — Brevo SMTP plugin (better free tier)
+  RC2-06 — Webhook HMAC hardening
+
+P3 (quality improvements):
+  RC2-05 — Snov.io person-based finder
+  RC2-07 — 2GIS dynamic city lookup
+```
 
 ---
 

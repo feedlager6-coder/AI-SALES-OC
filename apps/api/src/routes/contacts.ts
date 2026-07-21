@@ -52,13 +52,13 @@ export const contactsRoutes: FastifyPluginAsync = async (app) => {
     if (query.search) {
       const term = `%${query.search}%`
       // Search by name, email, and phone so users can find contacts by email address too
-      conditions.push(
-        or(
-          ilike(contacts.fullName, term),
-          ilike(contacts.email, term),
-          ilike(contacts.phone, term),
-        )!,
+      // or() returns SQL | undefined; we know it's defined because we pass non-empty args
+      const searchExpr = or(
+        ilike(contacts.fullName, term),
+        ilike(contacts.email, term),
+        ilike(contacts.phone, term),
       )
+      if (searchExpr) conditions.push(searchExpr)
     }
 
     const offset = (query.page - 1) * query.limit
