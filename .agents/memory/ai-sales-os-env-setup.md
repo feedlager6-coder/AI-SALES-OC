@@ -25,3 +25,16 @@ description: Required env vars, database, and dev-specific config for running th
 
 **Why:**
 These were runtime env mismatches discovered on first end-to-end test, not code bugs from CI perspective.
+
+## Post-merge / fresh-env failure pattern (fixed 2026-07-21)
+
+**Root cause:** On a fresh Replit env, DB tables don't exist until migrations run. If `db:migrate` is not run before the API starts, every auth request fails with a DB error, which Better Auth surfaces as a 500 that the browser renders as a silent failure — the form loses its JS event handler and falls back to native GET submission (credentials appear in the URL).
+
+**Secondary cause:** Migrations 0002 and 0003 existed as SQL files but were absent from `_journal.json`, so `db:migrate` silently skipped them. 0003 adds the `workspace_name` column; without it every auth query crashes with `column "workspace_name" does not exist`.
+
+**Fixes applied:**
+1. `packages/db/src/migrations/meta/_journal.json` — added entries for 0002 and 0003.
+2. `scripts/post-merge.sh` — created; runs `pnpm install`, `db:migrate`, package builds.
+3. Post-merge config set to `scripts/post-merge.sh` (180 s timeout) so it runs automatically after every merge.
+
+**Emergency manual fix:** `psql "$DATABASE_URL" -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS workspace_name varchar(255);"` then restart API.
