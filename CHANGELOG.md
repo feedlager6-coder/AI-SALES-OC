@@ -5,6 +5,55 @@ Format: [Sprint] — [Date] — [Summary]
 
 ---
 
+## Product Polish (MVP RC) — 2026-07-21
+
+Goal: make the product feel like a finished commercial SaaS before first-client use.
+No new back-end features — pure UX/UI/DX improvements.
+
+### Phase 1 — Product Polish
+
+**Dashboard** (`apps/web/src/app/(dashboard)/dashboard/page.tsx`)
+- Replaced 3-step onboarding with a full 5-step launch checklist (email account → companies → enrich → campaign → outreach) with real-time progress bar and auto-tick
+- Quick Actions row always visible (4 cards: Add companies, New campaign, Find leads, Analytics)
+- Recent Campaigns section: up to 4 latest campaigns with status dot + stats inline
+- Improved stat cards: smaller header, accent icon backgrounds, dynamic descriptions ("X% of base" for enrichment, reply rate inline)
+- "Add companies" CTA button in page header
+
+**Sidebar** (`apps/web/src/components/layout/sidebar.tsx`)
+- Workspace name shown under logo (fetched from `GET /api/workspaces/me`, 5min cache)
+- User info row at bottom with initials avatar + email (Better Auth `useSession`)
+- `isActive` check uses exact + prefix match to avoid `/companies/[id]` matching `/contacts`
+
+**Header** (`apps/web/src/components/layout/header.tsx`)
+- Breadcrumb navigation: detail pages show parent section name + back button + "Детали"
+- Compact height (h-14 → cleaner look)
+- Bell icon placeholder for future notifications
+
+**Settings** (`apps/web/src/app/(dashboard)/settings/page.tsx`)
+- New "Рабочее пространство" section: inline-editable workspace name (PATCH /api/workspaces/me)
+- Integration status table: 7 integrations × status (configured / not configured) based on email accounts + known env vars
+
+**Auth pages** (`apps/web/src/app/(auth)/login/page.tsx`, `register/page.tsx`)
+- Two-column split-screen layout on lg+ screens: left = brand panel with tagline + 3 feature bullets, right = form
+- Mobile: falls back to centred single-column
+
+**API client** (`apps/web/src/lib/api-client.ts`)
+- Added `api.workspace.update({ name?, settings? })` → `PATCH /api/workspaces/me`
+
+**React Query** (`apps/web/src/components/providers.tsx`)
+- `refetchOnWindowFocus: false` in default query options — eliminates unnecessary refetches when user alt-tabs back
+
+### Quality Gate (post-polish)
+
+| Check | Result |
+|-------|--------|
+| `pnpm turbo run typecheck` | ✅ 17/17 packages, 0 errors |
+| `pnpm turbo run lint` | ✅ 0 errors, 0 warnings |
+| `pnpm turbo run test` | ✅ 48/48 tests |
+| Workflows | ✅ API (3001) + Web (5000) healthy |
+
+---
+
 ## RC1 Complete — Contacts Workspace Isolation + Quality Gate (2026-07-21)
 
 Closes the incomplete security fix from Sprint 1.7 and confirms RC1 is fully green.

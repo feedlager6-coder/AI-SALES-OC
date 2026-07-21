@@ -479,6 +479,11 @@ export const api = {
           repliesCount: number
         }
       }>('/api/workspaces/stats'),
+    update: (body: { name?: string; settings?: Record<string, unknown> }) =>
+      request<{ data: { id: string; name: string } }>('/api/workspaces/me', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
   },
 }
 

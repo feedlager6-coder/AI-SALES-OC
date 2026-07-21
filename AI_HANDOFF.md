@@ -1,7 +1,7 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** RC1 Complete + RC2 Plan (2026-07-21)
-> **Next milestone:** RC2 — Real Integration Wiring
+> **Last updated:** Product Polish (MVP RC) — 2026-07-21
+> **Next milestone:** RC2 — Real Integration Wiring (API keys)
 
 ---
 
@@ -73,6 +73,7 @@ ai-sales-os/
 | QA | ✅ Complete | Pre-Sprint 1.6 audit — 6 bugs fixed (2 P0, 4 P1) |
 | 1.6 | ✅ Complete | AI email generation (OpenAI), reply classifier, campaign stats, sequence builder UX |
 | **1.7** | **✅ Complete** | E2E outreach flow wired end-to-end: enrollment dispatches jobs, reply stats fixed, delete guard, analytics breakdown |
+| **Polish** | **✅ Complete** | Product Polish MVP RC — dashboard redesign, 5-step onboarding, login split-screen, settings workspace editor + integration status table, sidebar user info, performance (refetchOnWindowFocus off) |
 
 ---
 

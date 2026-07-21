@@ -3,10 +3,254 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Plus, Trash2, Mail, CheckCircle, XCircle } from 'lucide-react'
+import {
+  Plus, Trash2, Mail, CheckCircle, XCircle, Building2,
+  Check, X, AlertCircle, Pencil,
+} from 'lucide-react'
 import { api, type EmailAccount, type CreateEmailAccountBody } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+
+// ─── Workspace Settings Section ───────────────────────────────────────────────
+
+function WorkspaceSettings() {
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState('')
+
+  const { data } = useQuery({
+    queryKey: ['workspace-me'],
+    queryFn: () => api.workspace.me(),
+    staleTime: 5 * 60_000,
+  })
+
+  const workspace = data?.data
+
+  const mutation = useMutation({
+    mutationFn: (newName: string) => api.workspace.update({ name: newName }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace-me'] })
+      toast.success('Название обновлено')
+      setEditing(false)
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const startEdit = () => {
+    setName(workspace?.name ?? '')
+    setEditing(true)
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-foreground">Рабочее пространство</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">Основные параметры вашего аккаунта</p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+            <Building2 className="h-6 w-6 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            {editing ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && name.trim()) mutation.mutate(name.trim())
+                    if (e.key === 'Escape') setEditing(false)
+                  }}
+                  autoFocus
+                  className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <button
+                  onClick={() => name.trim() && mutation.mutate(name.trim())}
+                  disabled={mutation.isPending || !name.trim()}
+                  className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setEditing(false)}
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <p className="text-base font-semibold text-foreground truncate">
+                  {workspace?.name ?? <span className="animate-pulse inline-block h-4 w-36 rounded bg-muted align-middle" />}
+                </p>
+                <button
+                  onClick={startEdit}
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Название отображается в интерфейсе и письмах
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── Integration status table ─────────────────────────────────────────────────
+
+const INTEGRATIONS = [
+  {
+    name: 'Mailgun / SMTP',
+    description: 'Отправка email-писем',
+    envVars: ['MAILGUN_API_KEY + MAILGUN_DOMAIN', 'или BREVO_API_KEY'],
+    type: 'dynamic' as const, // checked via email-accounts API
+    docLink: 'https://documentation.mailgun.com',
+  },
+  {
+    name: 'OpenAI',
+    description: 'AI-персонализация писем и классификация ответов',
+    envVars: ['OPENAI_API_KEY'],
+    type: 'static' as const,
+    configured: false,
+  },
+  {
+    name: 'HH.ru',
+    description: 'Поиск компаний по вакансиям (публичный API)',
+    envVars: [],
+    type: 'static' as const,
+    configured: true,
+  },
+  {
+    name: '2ГИС',
+    description: 'Поиск компаний по городу и отрасли',
+    envVars: ['TWOGIS_API_KEY'],
+    type: 'static' as const,
+    configured: false,
+  },
+  {
+    name: 'Hunter.io',
+    description: 'Поиск email по домену компании',
+    envVars: ['HUNTER_API_KEY'],
+    type: 'static' as const,
+    configured: false,
+  },
+  {
+    name: 'Snov.io',
+    description: 'Обогащение контактов',
+    envVars: ['SNOV_API_KEY'],
+    type: 'static' as const,
+    configured: false,
+  },
+  {
+    name: 'Dadata',
+    description: 'Обогащение данных о компаниях по ИНН',
+    envVars: ['DADATA_API_KEY'],
+    type: 'static' as const,
+    configured: false,
+  },
+]
+
+function IntegrationStatus() {
+  const { data: emailAccountsData } = useQuery({
+    queryKey: ['email-accounts'],
+    queryFn: () => api.emailAccounts.list(),
+    staleTime: 60_000,
+  })
+
+  const hasEmailAccount = (emailAccountsData?.data?.length ?? 0) > 0
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-foreground">Интеграции</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Статус подключения внешних сервисов. API-ключи устанавливаются через переменные окружения.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/30 border-b border-border">
+            <tr>
+              {['Интеграция', 'Описание', 'Переменные окружения', 'Статус'].map((h) => (
+                <th
+                  key={h}
+                  className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide"
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {INTEGRATIONS.map((integration) => {
+              const isConfigured =
+                integration.type === 'dynamic' ? hasEmailAccount : integration.configured
+
+              return (
+                <tr key={integration.name} className="hover:bg-muted/20 transition-colors">
+                  <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">
+                    {integration.name}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground text-xs max-w-[220px]">
+                    {integration.description}
+                  </td>
+                  <td className="px-4 py-3">
+                    {integration.envVars.length === 0 ? (
+                      <span className="text-xs text-muted-foreground italic">не требуется</span>
+                    ) : (
+                      <div className="flex flex-col gap-0.5">
+                        {integration.envVars.map((v) => (
+                          <code
+                            key={v}
+                            className="inline-block text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground"
+                          >
+                            {v}
+                          </code>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {isConfigured ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-900/40 px-2.5 py-1 text-xs font-medium text-emerald-400">
+                        <Check className="h-3 w-3" />
+                        Готово
+                      </span>
+                    ) : integration.envVars.length === 0 ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-900/40 px-2.5 py-1 text-xs font-medium text-emerald-400">
+                        <Check className="h-3 w-3" />
+                        Готово
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-900/40 px-2.5 py-1 text-xs font-medium text-amber-400">
+                        <AlertCircle className="h-3 w-3" />
+                        Не настроено
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="rounded-lg bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+        <strong>Как добавить API-ключи:</strong> Установите переменные окружения через панель Replit Secrets
+        (или &nbsp;<code className="font-mono">.env</code>&nbsp; файл в локальной разработке) и перезапустите API-сервер.
+      </div>
+    </section>
+  )
+}
 
 // ─── Add Email Account Modal ──────────────────────────────────────────────────
 
@@ -302,13 +546,12 @@ export default function SettingsPage() {
   const accounts = data?.data ?? []
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Настройки</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Параметры аккаунта и рабочего пространства
-        </p>
-      </div>
+    <div className="space-y-10 max-w-3xl">
+      {/* Workspace Settings */}
+      <WorkspaceSettings />
+
+      {/* Divider */}
+      <hr className="border-border" />
 
       {/* Email Accounts section */}
       <section className="space-y-4">
@@ -376,12 +619,17 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Mailgun info */}
         <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-          <strong>Tip:</strong> Для максимальной доставляемости настройте SPF, DKIM и DMARC для вашего домена
+          <strong>Совет:</strong> Для максимальной доставляемости настройте SPF, DKIM и DMARC для вашего домена
           в панели Mailgun. Начните с лимита 30–50 писем/день и постепенно увеличивайте.
         </div>
       </section>
+
+      {/* Divider */}
+      <hr className="border-border" />
+
+      {/* Integration status */}
+      <IntegrationStatus />
 
       <AddEmailAccountModal open={showAdd} onClose={() => setShowAdd(false)} />
     </div>
