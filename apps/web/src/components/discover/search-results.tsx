@@ -7,6 +7,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { MockCompany, SearchResult, SignalType } from '@/lib/search/types'
 import { CompanyCard } from './company-card'
+import { DraftMessageScreen } from '@/components/draft/draft-message-screen'
 
 // ─── Signal icon (compact) ────────────────────────────────────────────────────
 
@@ -87,32 +88,6 @@ function CompanyRow({
   )
 }
 
-// ─── "Write" stub notice ──────────────────────────────────────────────────────
-
-function WriteNotice({ company, onDismiss }: { company: MockCompany; onDismiss: () => void }) {
-  return (
-    <div className={cn(
-      'fixed bottom-6 left-1/2 -translate-x-1/2 z-40',
-      'flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-lg',
-      'animate-in fade-in slide-in-from-bottom-2 duration-200',
-      'max-w-sm w-full mx-4',
-    )}>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">
-          Написать {company.contact.name}
-        </p>
-        <p className="text-xs text-muted-foreground">Следующий этап разработки</p>
-      </div>
-      <button
-        onClick={onDismiss}
-        className="text-xs text-primary hover:underline shrink-0"
-      >
-        Закрыть
-      </button>
-    </div>
-  )
-}
-
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface SearchResultsProps {
@@ -139,6 +114,17 @@ export function SearchResults({ result, onNewSearch }: SearchResultsProps) {
     setWriteTarget(company)
   }
 
+  // ── Draft screen takes over the whole results area ──────────────────────────
+  if (writeTarget) {
+    return (
+      <DraftMessageScreen
+        company={writeTarget}
+        onBack={() => setWriteTarget(null)}
+      />
+    )
+  }
+
+  // ── Results list ────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
 
@@ -197,14 +183,6 @@ export function SearchResults({ result, onNewSearch }: SearchResultsProps) {
           onClose={() => setSelectedCompany(null)}
           onWrite={handleWrite}
           onSkip={handleSkip}
-        />
-      )}
-
-      {/* Write stub notice */}
-      {writeTarget && (
-        <WriteNotice
-          company={writeTarget}
-          onDismiss={() => setWriteTarget(null)}
         />
       )}
 
