@@ -32,20 +32,23 @@ export function LoginForm() {
     setIsLoading(true)
     setError(null)
 
-    const { error: authError } = await authClient.signIn.email({
-      email: data.email,
-      password: data.password,
-    })
+    try {
+      const { error: authError } = await authClient.signIn.email({
+        email: data.email,
+        password: data.password,
+      })
 
-    setIsLoading(false)
+      if (authError) {
+        setError(authError.message ?? 'Ошибка входа. Проверьте данные.')
+        return
+      }
 
-    if (authError) {
-      setError(authError.message ?? 'Ошибка входа. Проверьте данные.')
-      return
+      router.push('/dashboard')
+    } catch {
+      setError('Не удалось подключиться к серверу. Попробуйте ещё раз.')
+    } finally {
+      setIsLoading(false)
     }
-
-    router.push('/dashboard')
-    router.refresh()
   }
 
   return (

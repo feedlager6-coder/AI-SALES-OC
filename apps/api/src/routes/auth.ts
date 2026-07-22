@@ -6,6 +6,21 @@ import { getAuth } from '../plugins/auth.js'
  * Better Auth handles: /sign-in/email, /sign-up/email, /sign-out, /session, etc.
  */
 export const authRoutes: FastifyPluginAsync = async (app) => {
+  // Better Auth's sign-out (and other endpoints) sends POST with empty body
+  // and Content-Type: application/json. Fastify's default parser rejects this.
+  // Override the parser within this plugin scope to accept empty JSON bodies.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    if (!body || body === '') {
+      done(null, null)
+      return
+    }
+    try {
+      done(null, JSON.parse(body as string))
+    } catch {
+      done(new Error('Body must be valid JSON'))
+    }
+  })
+
   // Stricter rate limit for auth endpoints (sign-in brute-force protection)
   app.all('/*', {
     config: {
@@ -29,10 +44,15 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const isBodyMethod = !['GET', 'HEAD'].includes(request.method)
+    // request.body is null when the POST body is empty (sign-out etc.)
+    const bodyPayload = isBodyMethod && request.body != null
+      ? JSON.stringify(request.body)
+      : undefined
+
     const webRequest = new Request(url.toString(), {
       method: request.method,
       headers,
-      ...(isBodyMethod ? { body: JSON.stringify(request.body) } : {}),
+      ...(bodyPayload !== undefined ? { body: bodyPayload } : {}),
     })
 
     const response = await auth.handler(webRequest)
