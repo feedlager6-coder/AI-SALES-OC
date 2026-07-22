@@ -1,15 +1,24 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { Search, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
+import { Search, ArrowRight, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { parseIntentMock } from '@/lib/intent/parse-intent-mock'
 import { InteractiveIntentCard } from '@/components/discover/interactive-intent-card'
+import { SearchProgress } from '@/components/discover/search-progress'
+import { SearchResults } from '@/components/discover/search-results'
+import { searchCompanies } from '@/lib/search/mock-search-service'
 import type { ConfirmedIntent, ParsedIntent } from '@/lib/intent/types'
+import type { SearchResult } from '@/lib/search/types'
 
-// ─── Page phases ──────────────────────────────────────────────────────────────
+// ─── Phase machine ────────────────────────────────────────────────────────────
+//
+//   search → confirm → searching → results
+//     ↑_________________________________|   (new search)
+//   confirm → search                        (edit)
+//
 
-type Phase = 'search' | 'confirm' | 'done'
+type Phase = 'search' | 'confirm' | 'searching' | 'results'
 
 // ─── Example queries ──────────────────────────────────────────────────────────
 
@@ -22,11 +31,14 @@ const EXAMPLES = [
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DiscoverPage() {
-  const [phase, setPhase] = useState<Phase>('search')
-  const [query, setQuery] = useState('')
+  const [phase, setPhase]               = useState<Phase>('search')
+  const [query, setQuery]               = useState('')
   const [parsedIntent, setParsedIntent] = useState<ParsedIntent | null>(null)
-  const [confirmed, setConfirmed] = useState<ConfirmedIntent | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+  const textareaRef                     = useRef<HTMLTextAreaElement>(null)
+
+  // Stores the search promise result while the animation plays
+  const pendingResultRef = useRef<SearchResult | null>(null)
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -42,7 +54,6 @@ export default function DiscoverPage() {
   const handleExample = (text: string) => {
     setQuery(text)
     setPhase('search')
-    // Focus textarea after setting value so user can edit
     setTimeout(() => textareaRef.current?.focus(), 0)
   }
 
@@ -50,45 +61,88 @@ export default function DiscoverPage() {
     setPhase('search')
     setTimeout(() => {
       textareaRef.current?.focus()
-      // Move cursor to end
       const len = textareaRef.current?.value.length ?? 0
       textareaRef.current?.setSelectionRange(len, len)
     }, 0)
   }
 
   const handleConfirm = (result: ConfirmedIntent) => {
-    setConfirmed(result)
-    setPhase('done')
+    pendingResultRef.current = null
+    setPhase('searching')
+
+    // Fire search in parallel with the animation (~2.4s).
+    // The animation lasts ~3.3s, so data is ready before it finishes.
+    searchCompanies({
+      rawQuery:        result.rawQuery,
+      industry:        result.parsed.industry,
+      region:          result.parsed.region,
+      companySize:     result.parsed.companySize,
+      clarifyingAnswer: result.clarifyingAnswer,
+    }).then((data) => {
+      pendingResultRef.current = data
+    })
   }
 
-  const handleReset = () => {
+  // Called by SearchProgress when the animation finishes
+  const handleSearchAnimationComplete = useCallback(() => {
+    const data = pendingResultRef.current
+    if (data) {
+      setSearchResult(data)
+      setPhase('results')
+    } else {
+      // Fallback: data arrived late — poll briefly
+      const interval = setInterval(() => {
+        if (pendingResultRef.current) {
+          clearInterval(interval)
+          setSearchResult(pendingResultRef.current)
+          setPhase('results')
+        }
+      }, 100)
+    }
+  }, [])
+
+  const handleNewSearch = () => {
     setQuery('')
     setParsedIntent(null)
-    setConfirmed(null)
+    setSearchResult(null)
+    pendingResultRef.current = null
     setPhase('search')
     setTimeout(() => textareaRef.current?.focus(), 0)
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Layout helpers ──────────────────────────────────────────────────────────
+
+  // Results use the full content width; other phases use a centred narrow column
+  const isResultsPhase = phase === 'results'
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] px-4">
-      <div className="w-full max-w-2xl space-y-8">
+    <div className={cn(
+      'px-4',
+      isResultsPhase
+        ? 'py-6'
+        : 'flex flex-col items-center justify-center min-h-[calc(100vh-8rem)]',
+    )}>
+      <div className={cn(
+        'w-full',
+        isResultsPhase ? 'max-w-3xl mx-auto' : 'max-w-2xl space-y-8',
+      )}>
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center h-12 w-12 rounded-2xl bg-primary/10 mb-2">
-            <Sparkles className="h-6 w-6 text-primary" />
+        {/* ── Header (hidden on results) ──────────────────────────────────── */}
+        {!isResultsPhase && (
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center h-12 w-12 rounded-2xl bg-primary/10 mb-2">
+              <Sparkles className="h-6 w-6 text-primary" />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              Кого вы ищете?
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              Опишите целевую аудиторию — мы найдём подходящих клиентов
+            </p>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Кого вы ищете?
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Опишите целевую аудиторию — мы найдём подходящих клиентов
-          </p>
-        </div>
+        )}
 
-        {/* ── Phase: search ───────────────────────────────────────────────── */}
+        {/* ── Phase: search ─────────────────────────────────────────────── */}
         {phase === 'search' && (
           <>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -115,7 +169,6 @@ export default function DiscoverPage() {
                   )}
                 />
               </div>
-
               <button
                 type="submit"
                 disabled={!query.trim()}
@@ -132,7 +185,6 @@ export default function DiscoverPage() {
               </button>
             </form>
 
-            {/* Examples */}
             <div className="space-y-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide text-center">
                 Примеры запросов
@@ -147,8 +199,7 @@ export default function DiscoverPage() {
                       'w-full text-left rounded-lg border border-border bg-card px-4 py-3',
                       'text-sm text-muted-foreground hover:text-foreground',
                       'hover:border-primary/30 hover:bg-accent',
-                      'transition-all duration-150',
-                      'group flex items-center justify-between',
+                      'transition-all duration-150 group flex items-center justify-between',
                     )}
                   >
                     <span>{example}</span>
@@ -160,7 +211,7 @@ export default function DiscoverPage() {
           </>
         )}
 
-        {/* ── Phase: confirm (Interactive Intent) ─────────────────────────── */}
+        {/* ── Phase: confirm ────────────────────────────────────────────── */}
         {phase === 'confirm' && parsedIntent && (
           <InteractiveIntentCard
             rawQuery={query}
@@ -170,40 +221,20 @@ export default function DiscoverPage() {
           />
         )}
 
-        {/* ── Phase: done (stub — real results go here in next sprint) ─────── */}
-        {phase === 'done' && confirmed && (
-          <div className="rounded-xl border border-border bg-card overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-300">
-            <div className="px-5 py-4 border-b border-border bg-emerald-950/30">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                <p className="text-sm font-semibold text-foreground">
-                  Запрос подтверждён
-                </p>
-              </div>
-            </div>
-            <div className="px-5 py-6 text-center space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Здесь появятся результаты поиска.
-              </p>
-              <p className="text-xs text-muted-foreground/60">
-                Следующий этап разработки — подключение реального поиска компаний.
-              </p>
-            </div>
-            <div className="px-5 pb-5 text-center">
-              <button
-                type="button"
-                onClick={handleReset}
-                className={cn(
-                  'inline-flex items-center gap-2 rounded-lg px-4 py-2',
-                  'text-sm font-medium text-muted-foreground',
-                  'border border-border hover:border-border/80 hover:text-foreground hover:bg-accent',
-                  'transition-all',
-                )}
-              >
-                Новый поиск
-              </button>
-            </div>
-          </div>
+        {/* ── Phase: searching ──────────────────────────────────────────── */}
+        {phase === 'searching' && (
+          <SearchProgress
+            query={query}
+            onComplete={handleSearchAnimationComplete}
+          />
+        )}
+
+        {/* ── Phase: results ────────────────────────────────────────────── */}
+        {phase === 'results' && searchResult && (
+          <SearchResults
+            result={searchResult}
+            onNewSearch={handleNewSearch}
+          />
         )}
 
       </div>
