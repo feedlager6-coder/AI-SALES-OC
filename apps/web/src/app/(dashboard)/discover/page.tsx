@@ -7,7 +7,7 @@ import { parseIntentMock } from '@/lib/intent/parse-intent-mock'
 import { InteractiveIntentCard } from '@/components/discover/interactive-intent-card'
 import { SearchProgress } from '@/components/discover/search-progress'
 import { SearchResults } from '@/components/discover/search-results'
-import { searchCompanies } from '@/lib/search/mock-search-service'
+import { huntService } from '@/lib/search/hunt-service'
 import type { ConfirmedIntent, ParsedIntent } from '@/lib/intent/types'
 import type { SearchResult } from '@/lib/search/types'
 
@@ -16,9 +16,10 @@ import type { SearchResult } from '@/lib/search/types'
 //   search → confirm → searching → results
 //     ↑_________________________________|   (new search)
 //   confirm → search                        (edit)
+//   searching → error                       (provider failure)
 //
 
-type Phase = 'search' | 'confirm' | 'searching' | 'results'
+type Phase = 'search' | 'confirm' | 'searching' | 'results' | 'error'
 
 // ─── Example queries ──────────────────────────────────────────────────────────
 
@@ -38,7 +39,9 @@ export default function DiscoverPage() {
   const textareaRef                     = useRef<HTMLTextAreaElement>(null)
 
   // Stores the search promise result while the animation plays
-  const pendingResultRef = useRef<SearchResult | null>(null)
+  const pendingResultRef  = useRef<SearchResult | null>(null)
+  // Set to true when the search promise rejects
+  const searchFailedRef   = useRef<boolean>(false)
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -68,37 +71,53 @@ export default function DiscoverPage() {
 
   const handleConfirm = (result: ConfirmedIntent) => {
     pendingResultRef.current = null
+    searchFailedRef.current  = false
     setPhase('searching')
 
     // Fire search in parallel with the animation (~2.4s).
     // The animation lasts ~3.3s, so data is ready before it finishes.
-    searchCompanies({
-      rawQuery:        result.rawQuery,
-      industry:        result.parsed.industry,
-      region:          result.parsed.region,
-      companySize:     result.parsed.companySize,
+    huntService.search({
+      rawQuery:         result.rawQuery,
+      industry:         result.parsed.industry,
+      region:           result.parsed.region,
+      companySize:      result.parsed.companySize,
       clarifyingAnswer: result.clarifyingAnswer,
     }).then((data) => {
       pendingResultRef.current = data
+    }).catch((err: unknown) => {
+      console.error('[DiscoverPage] Search failed:', err)
+      searchFailedRef.current = true
     })
   }
 
   // Called by SearchProgress when the animation finishes
   const handleSearchAnimationComplete = useCallback(() => {
-    const data = pendingResultRef.current
-    if (data) {
-      setSearchResult(data)
+    // Immediate resolution — data already arrived
+    if (pendingResultRef.current) {
+      setSearchResult(pendingResultRef.current)
       setPhase('results')
-    } else {
-      // Fallback: data arrived late — poll briefly
-      const interval = setInterval(() => {
-        if (pendingResultRef.current) {
-          clearInterval(interval)
-          setSearchResult(pendingResultRef.current)
-          setPhase('results')
-        }
-      }, 100)
+      return
     }
+
+    // Immediate failure — provider already rejected
+    if (searchFailedRef.current) {
+      setPhase('error')
+      return
+    }
+
+    // Fallback: data or error hasn't arrived yet — poll for up to 5 s then fail
+    const TIMEOUT_MS = 5_000
+    const started    = Date.now()
+    const interval   = setInterval(() => {
+      if (pendingResultRef.current) {
+        clearInterval(interval)
+        setSearchResult(pendingResultRef.current)
+        setPhase('results')
+      } else if (searchFailedRef.current || Date.now() - started >= TIMEOUT_MS) {
+        clearInterval(interval)
+        setPhase('error')
+      }
+    }, 100)
   }, [])
 
   const handleNewSearch = () => {
@@ -106,6 +125,7 @@ export default function DiscoverPage() {
     setParsedIntent(null)
     setSearchResult(null)
     pendingResultRef.current = null
+    searchFailedRef.current  = false
     setPhase('search')
     setTimeout(() => textareaRef.current?.focus(), 0)
   }
@@ -235,6 +255,27 @@ export default function DiscoverPage() {
             result={searchResult}
             onNewSearch={handleNewSearch}
           />
+        )}
+
+        {/* ── Phase: error ──────────────────────────────────────────────── */}
+        {phase === 'error' && (
+          <div className="text-center space-y-4 py-12">
+            <p className="text-muted-foreground text-sm">
+              Не удалось выполнить поиск. Попробуйте ещё раз.
+            </p>
+            <button
+              type="button"
+              onClick={handleNewSearch}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-xl px-6 py-3',
+                'text-sm font-semibold bg-primary text-primary-foreground',
+                'hover:bg-primary/90 transition-all',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              )}
+            >
+              Новый поиск
+            </button>
+          </div>
         )}
 
       </div>
