@@ -922,7 +922,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
         href="/campaigns"
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
-        <ArrowLeft className="h-4 w-4" /> Кампании
+        <ArrowLeft className="h-4 w-4" /> Рассылки
       </Link>
 
       {/* Campaign header */}
@@ -998,7 +998,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
       {/* Tabs */}
       <div className="flex gap-1">
         {[
-          { value: 'sequences' as const, label: 'Цепочки', count: sequences.length },
+          { value: 'sequences' as const, label: 'Письма', count: sequences.length },
           { value: 'enrollments' as const, label: 'Участники', count: stats.enrolled },
         ].map(({ value, label, count }) => (
           <button
@@ -1027,22 +1027,22 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
               onClick={() => setShowCreateSeq(true)}
               className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
-              <Plus className="h-4 w-4" /> Новая цепочка
+              <Plus className="h-4 w-4" /> Добавить письмо
             </button>
           </div>
 
           {sequences.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center">
               <Mail className="mx-auto h-10 w-10 text-muted-foreground/40 mb-4" />
-              <h3 className="text-base font-semibold text-foreground mb-1">Нет цепочек</h3>
+              <h3 className="text-base font-semibold text-foreground mb-1">Письма ещё не добавлены</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Создайте email-последовательность для этой кампании
+                Добавьте шаги рассылки — AI подготовит черновик первого письма
               </p>
               <button
                 onClick={() => setShowCreateSeq(true)}
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
               >
-                <Plus className="h-4 w-4" /> Создать цепочку
+                <Plus className="h-4 w-4" /> Добавить письмо
               </button>
             </div>
           ) : (

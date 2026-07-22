@@ -288,9 +288,9 @@ export default function CampaignsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Кампании</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Рассылки</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Email-кампании и outreach-последовательности
+            Email-рассылки и последовательности писем
           </p>
         </div>
         <button
@@ -298,7 +298,7 @@ export default function CampaignsPage() {
           className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <Plus className="h-4 w-4" />
-          Новая кампания
+          Новая рассылка
         </button>
       </div>
 
@@ -364,16 +364,16 @@ export default function CampaignsPage() {
       ) : campaigns.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center">
           <Mail className="mx-auto h-10 w-10 text-muted-foreground/50 mb-4" />
-          <h3 className="text-base font-semibold text-foreground mb-1">Нет кампаний</h3>
+          <h3 className="text-base font-semibold text-foreground mb-1">Рассылок пока нет</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Создайте первую кампанию, чтобы начать outreach
+            Создайте первую рассылку, чтобы написать потенциальным клиентам
           </p>
           <button
             onClick={() => setShowCreate(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             <Plus className="h-4 w-4" />
-            Создать кампанию
+            Создать рассылку
           </button>
         </div>
       ) : (

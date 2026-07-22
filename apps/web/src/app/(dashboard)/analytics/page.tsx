@@ -102,7 +102,7 @@ export default function AnalyticsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Аналитика</h1>
-        <p className="text-sm text-muted-foreground mt-1">Метрики и эффективность outreach</p>
+        <p className="text-sm text-muted-foreground mt-1">Метрики и эффективность рассылок</p>
       </div>
 
       {/* Error state */}
@@ -245,7 +245,7 @@ export default function AnalyticsPage() {
             { title: 'Анализ открытий', desc: 'Время и частота открытия писем' },
             { title: 'Эффективность по отраслям', desc: 'Reply rate в разрезе отраслей' },
             { title: 'Лучшие темы писем', desc: 'Тема с наивысшим open rate' },
-            { title: 'География лидов', desc: 'Распределение компаний по регионам' },
+            { title: 'География клиентов', desc: 'Распределение компаний по регионам' },
             { title: 'AI-персонализация', desc: 'Эффект AI vs шаблон на reply rate' },
           ].map(({ title, desc }) => (
             <div
@@ -299,7 +299,7 @@ function CampaignBreakdown() {
     <section className="space-y-4">
       <div className="flex items-center gap-2">
         <Target className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-base font-semibold text-foreground">Кампании</h2>
+        <h2 className="text-base font-semibold text-foreground">Рассылки</h2>
       </div>
       <div className="rounded-xl border border-border bg-card overflow-x-auto">
         <table className="w-full text-sm min-w-[640px]">

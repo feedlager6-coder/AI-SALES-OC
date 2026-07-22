@@ -15,10 +15,10 @@ export default function LoginPage() {
           </div>
 
           <h2 className="text-2xl font-bold text-foreground leading-snug mb-3">
-            Автоматизация B2B outreach<br />для российского рынка
+            Найдите клиентов<br />за несколько минут
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Находите компании, обогащайте контакты и запускайте AI-персонализированные email-кампании — всё в одной платформе.
+            Опишите кого ищете — система найдёт компании, подготовит контакты и напишет первое письмо за вас.
           </p>
 
           <div className="mt-10 space-y-4">

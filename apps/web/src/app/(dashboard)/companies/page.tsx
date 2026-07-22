@@ -24,9 +24,9 @@ const STATUS_LABELS: Record<string, string> = {
   new: 'Новый',
   enriching: 'Обогащение',
   enriched: 'Обогащён',
-  qualified: 'Квалифицирован',
-  low_quality: 'Низкое качество',
-  contacted: 'Связались',
+  qualified: 'Готов',
+  low_quality: 'Низкий приоритет',
+  contacted: 'Написал',
   replied: 'Ответил',
   meeting: 'Встреча',
   proposal: 'КП отправлено',
@@ -140,7 +140,7 @@ const columns: ColumnDef<Company>[] = [
   },
   {
     id: 'icpScore',
-    header: 'ICP',
+    header: 'Приоритет',
     cell: ({ row }) => <IcpScoreBadge score={row.original.icpScore} />,
   },
   {
@@ -273,12 +273,12 @@ export default function CompaniesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Компании</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Мои клиенты</h1>
           <p className="text-muted-foreground text-sm mt-1">
             {data
               ? data.meta.total === 0
-                ? 'Нет компаний — добавьте первую'
-                : `${data.meta.total} ${data.meta.total === 1 ? 'компания' : data.meta.total < 5 ? 'компании' : 'компаний'} в базе`
+                ? 'Клиенты ещё не добавлены — найдите первых'
+                : `${data.meta.total} ${data.meta.total === 1 ? 'клиент' : data.meta.total < 5 ? 'клиента' : 'клиентов'} в базе`
               : <span className="inline-block h-4 w-32 animate-pulse rounded bg-muted align-middle" />}
           </p>
         </div>
@@ -360,7 +360,7 @@ export default function CompaniesPage() {
             )}
           >
             <SlidersHorizontal className="h-4 w-4" />
-            ICP фильтр
+            Фильтр приоритета
           </button>
 
           {isFetching && (
@@ -386,7 +386,7 @@ export default function CompaniesPage() {
           <div className="rounded-lg border border-border bg-card p-4 flex items-end gap-6">
             <div className="flex-1">
               <label className="block text-sm font-medium text-foreground mb-3">
-                ICP Score:{' '}
+                Приоритет:{' '}
                 <span className="text-primary font-semibold">
                   {icpRange[0]} — {icpRange[1]}
                 </span>
@@ -430,9 +430,9 @@ export default function CompaniesPage() {
                 </div>
               </div>
               <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                <span>Не в ICP (&lt;30)</span>
+                <span>Низкий (&lt;30)</span>
                 <span className="text-amber-400">Нейтральный (30–49)</span>
-                <span className="text-blue-400">Квалифицирован (50–74)</span>
+                <span className="text-blue-400">Хороший (50–74)</span>
                 <span className="text-emerald-400">Высокий (≥75)</span>
               </div>
             </div>
@@ -462,7 +462,7 @@ export default function CompaniesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                {['Компания','Город','Отрасль','Источник','Статус','ICP','Данные',''].map((h) => (
+                {['Компания','Город','Отрасль','Источник','Статус','Приоритет','Данные',''].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">{h}</th>
                 ))}
               </tr>

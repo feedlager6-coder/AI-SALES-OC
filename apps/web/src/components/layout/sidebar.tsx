@@ -18,10 +18,10 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
 const navItems = [
-  { href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard },
-  { href: '/companies', label: 'Компании', icon: Building2 },
+  { href: '/dashboard', label: 'Сегодня', icon: LayoutDashboard },
+  { href: '/companies', label: 'Мои клиенты', icon: Building2 },
   { href: '/contacts', label: 'Контакты', icon: Users },
-  { href: '/campaigns', label: 'Кампании', icon: Mail },
+  { href: '/campaigns', label: 'Рассылки', icon: Mail },
   { href: '/analytics', label: 'Аналитика', icon: BarChart3 },
 ]
 

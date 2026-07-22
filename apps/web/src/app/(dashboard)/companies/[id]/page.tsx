@@ -30,9 +30,9 @@ const STATUS_LABELS: Record<string, string> = {
   new: 'Новый',
   enriching: 'Обогащение',
   enriched: 'Обогащён',
-  qualified: 'Квалифицирован',
-  low_quality: 'Низкое качество',
-  contacted: 'Связались',
+  qualified: 'Готов',
+  low_quality: 'Низкий приоритет',
+  contacted: 'Написал',
   replied: 'Ответил',
   meeting: 'Встреча',
   proposal: 'КП отправлено',
@@ -326,11 +326,11 @@ export default function CompanyDetailPage() {
           {/* ICP Score */}
           <div className="rounded-lg border border-border bg-card p-4">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-              ICP Score
+              Приоритет
             </p>
             <IcpBar score={company.icpScore} />
             <p className="text-xs text-muted-foreground mt-2">
-              {company.icpScore >= 75 ? '🟢 Высокий приоритет' : company.icpScore >= 50 ? '🔵 Квалифицирован' : company.icpScore >= 30 ? '🟡 Под вопросом' : '🔴 Не в ICP'}
+              {company.icpScore >= 75 ? '🟢 Высокий' : company.icpScore >= 50 ? '🔵 Хороший' : company.icpScore >= 30 ? '🟡 Нейтральный' : '🔴 Низкий'}
             </p>
           </div>
 

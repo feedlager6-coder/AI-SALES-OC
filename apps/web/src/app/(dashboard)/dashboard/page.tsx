@@ -144,8 +144,8 @@ function QuickActions() {
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {[
         { href: '/companies', icon: Plus, label: 'Добавить компании', sub: 'Импорт или поиск' },
-        { href: '/campaigns', icon: Mail, label: 'Новая кампания', sub: 'Настроить outreach' },
-        { href: '/companies', icon: Zap, label: 'Найти лиды', sub: '2ГИС и HH.ru' },
+        { href: '/campaigns', icon: Mail, label: 'Новая рассылка', sub: 'Написать клиентам' },
+        { href: '/companies', icon: Zap, label: 'Найти клиентов', sub: '2ГИС и HH.ru' },
         { href: '/analytics', icon: Target, label: 'Аналитика', sub: 'Воронка и метрики' },
       ].map(({ href, icon: Icon, label, sub }) => (
         <Link
@@ -307,8 +307,8 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">Дашборд</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Обзор вашей sales pipeline</p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">Сегодня</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Обзор вашей воронки</p>
         </div>
         <Link
           href="/companies"
@@ -389,16 +389,16 @@ export default function DashboardPage() {
       {!isLoading && campaigns.length === 0 && hasCompanies && (
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
           <Mail className="mx-auto h-8 w-8 text-muted-foreground/40 mb-3" />
-          <h3 className="text-sm font-semibold text-foreground mb-1">Нет активных кампаний</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-1">Рассылок пока нет</h3>
           <p className="text-xs text-muted-foreground mb-4">
-            Компании добавлены — создайте первую outreach-кампанию
+            Клиенты добавлены — создайте первую рассылку
           </p>
           <Link
             href="/campaigns"
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             <Plus className="h-4 w-4" />
-            Создать кампанию
+            Создать рассылку
           </Link>
         </div>
       )}

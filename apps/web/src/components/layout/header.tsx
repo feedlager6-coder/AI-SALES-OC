@@ -5,10 +5,10 @@ import { LogOut, Bell } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Дашборд',
-  '/companies': 'Компании',
+  '/dashboard': 'Сегодня',
+  '/companies': 'Мои клиенты',
   '/contacts': 'Контакты',
-  '/campaigns': 'Кампании',
+  '/campaigns': 'Рассылки',
   '/analytics': 'Аналитика',
   '/settings': 'Настройки',
 }

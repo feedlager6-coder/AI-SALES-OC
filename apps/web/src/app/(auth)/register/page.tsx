@@ -18,7 +18,7 @@ export default function RegisterPage() {
             Начните бесплатно
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Зарегистрируйтесь и запустите первую outreach-кампанию за 15 минут.
+            Зарегистрируйтесь и напишите первому потенциальному клиенту за 10 минут.
           </p>
 
           <div className="mt-10 space-y-4">
