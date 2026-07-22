@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import { Search, ArrowRight, Sparkles } from 'lucide-react'
+import { Search, ArrowRight, Sparkles, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { parseIntentMock } from '@/lib/intent/parse-intent-mock'
+import { parseIntent } from '@/lib/intent/intent-api'
 import { InteractiveIntentCard } from '@/components/discover/interactive-intent-card'
 import { SearchProgress } from '@/components/discover/search-progress'
 import { SearchResults } from '@/components/discover/search-results'
@@ -36,6 +36,8 @@ export default function DiscoverPage() {
   const [query, setQuery]               = useState('')
   const [parsedIntent, setParsedIntent] = useState<ParsedIntent | null>(null)
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+  const [isParsing, setIsParsing]       = useState(false)
+  const [parseError, setParseError]     = useState<string | null>(null)
   const textareaRef                     = useRef<HTMLTextAreaElement>(null)
 
   // Stores the search promise result while the animation plays
@@ -45,13 +47,22 @@ export default function DiscoverPage() {
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = query.trim()
-    if (!trimmed) return
-    const intent = parseIntentMock(trimmed)
-    setParsedIntent(intent)
-    setPhase('confirm')
+    if (!trimmed || isParsing) return
+    setIsParsing(true)
+    setParseError(null)
+    try {
+      const intent = await parseIntent(trimmed)
+      setParsedIntent(intent)
+      setPhase('confirm')
+    } catch (err: unknown) {
+      console.error('[DiscoverPage] Intent parse failed:', err)
+      setParseError('Не удалось обработать запрос. Проверьте соединение и попробуйте ещё раз.')
+    } finally {
+      setIsParsing(false)
+    }
   }
 
   const handleExample = (text: string) => {
@@ -191,7 +202,7 @@ export default function DiscoverPage() {
               </div>
               <button
                 type="submit"
-                disabled={!query.trim()}
+                disabled={!query.trim() || isParsing}
                 className={cn(
                   'w-full inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3',
                   'text-sm font-semibold transition-all',
@@ -200,10 +211,23 @@ export default function DiscoverPage() {
                   'disabled:pointer-events-none disabled:opacity-40',
                 )}
               >
-                Найти клиентов
-                <ArrowRight className="h-4 w-4" />
+                {isParsing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Анализируем запрос…
+                  </>
+                ) : (
+                  <>
+                    Найти клиентов
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </button>
             </form>
+
+            {parseError && (
+              <p className="text-xs text-destructive text-center -mt-2">{parseError}</p>
+            )}
 
             <div className="space-y-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide text-center">

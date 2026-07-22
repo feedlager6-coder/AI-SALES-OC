@@ -18,6 +18,7 @@ import { emailAccountsRoutes } from './routes/email-accounts.js'
 import { campaignsRoutes } from './routes/campaigns.js'
 import { sequencesRoutes } from './routes/sequences.js'
 import { webhooksRoutes } from './routes/webhooks.js'
+import { intentRoutes } from './routes/intent.js'
 
 const logger = createLogger({ name: 'api:app' })
 
@@ -139,6 +140,7 @@ export async function buildApp() {
   await app.register(campaignsRoutes, { prefix: '/api/campaigns' })
   await app.register(sequencesRoutes, { prefix: '/api/sequences' })
   await app.register(webhooksRoutes, { prefix: '/api/webhooks' })
+  await app.register(intentRoutes, { prefix: '/api/v1/intent' })
 
   return app
 }
