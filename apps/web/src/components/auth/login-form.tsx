@@ -43,7 +43,7 @@ export function LoginForm() {
         return
       }
 
-      router.push('/dashboard')
+      router.push('/discover')
     } catch {
       setError('Не удалось подключиться к серверу. Попробуйте ещё раз.')
     } finally {

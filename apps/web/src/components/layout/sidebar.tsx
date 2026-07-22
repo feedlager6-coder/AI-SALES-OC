@@ -11,6 +11,7 @@ import {
   Settings,
   Zap,
   ChevronsUpDown,
+  Search,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/lib/auth-client'
@@ -18,6 +19,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
 const navItems = [
+  { href: '/discover', label: 'Найти клиентов', icon: Search },
   { href: '/dashboard', label: 'Сегодня', icon: LayoutDashboard },
   { href: '/companies', label: 'Мои клиенты', icon: Building2 },
   { href: '/contacts', label: 'Контакты', icon: Users },

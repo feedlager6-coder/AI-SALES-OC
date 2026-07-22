@@ -49,7 +49,7 @@ export function RegisterForm() {
       return
     }
 
-    router.push('/dashboard')
+    router.push('/discover')
     router.refresh()
   }
 
