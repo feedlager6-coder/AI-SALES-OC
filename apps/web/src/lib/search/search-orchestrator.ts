@@ -6,6 +6,7 @@
  *   • Sequential provider execution (one at a time; simpler failure isolation)
  *   • Result merging across all providers
  *   • Deduplication by INN → domain → id (in that priority order)
+ *   • Ranking via RankingEngine (after merge + dedup)
  *
  * Architecture:
  *
@@ -15,7 +16,11 @@
  *    ↓ (for each provider in ProviderRegistry, sequentially)
  *   SearchProvider.search(hunt)
  *    ↓
- *   merged + deduplicated SearchResult
+ *   merged + deduplicated companies
+ *    ↓
+ *   RankingEngine.rank(companies, hunt)
+ *    ↓
+ *   SearchResult  (ordered by relevance, no score field in output)
  *    ↓
  *   UI
  *
@@ -24,6 +29,11 @@
  *   2. Call providerRegistry.register(new TwoGISProvider()) in this file.
  *   3. Done — SearchOrchestratorImpl picks it up automatically.
  *      No changes to HuntService, Discover page, or any UI component.
+ *
+ * How to replace the ranking algorithm (e.g. with AI):
+ *   1. Create a class implementing RankingEngine (e.g. AiRankingEngine).
+ *   2. Pass it to SearchOrchestratorImpl as the second constructor argument.
+ *   3. Done — zero changes to providers, HuntService, or UI required.
  *
  * Sequential vs parallel:
  *   Providers currently run sequentially so each provider's result can inform
@@ -34,6 +44,8 @@
 import type { Hunt } from '../hunt/hunt-api'
 import type { MockCompany, SearchResult } from './types'
 import type { ProviderRegistry } from './provider-registry'
+import { DefaultRankingEngine } from './ranking-engine'
+import type { RankingEngine } from './ranking-engine'
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
@@ -75,7 +87,16 @@ function dedupKey(company: MockCompany): string {
 // ─── Implementation ───────────────────────────────────────────────────────────
 
 export class SearchOrchestratorImpl implements SearchOrchestrator {
-  constructor(private readonly registry: ProviderRegistry) {}
+  private readonly rankingEngine: RankingEngine
+
+  constructor(
+    private readonly registry: ProviderRegistry,
+    rankingEngine?: RankingEngine,
+  ) {
+    // Allow callers to inject a custom RankingEngine (e.g. AiRankingEngine).
+    // Falls back to DefaultRankingEngine (rule-based) when none is provided.
+    this.rankingEngine = rankingEngine ?? new DefaultRankingEngine()
+  }
 
   async search(hunt: Hunt): Promise<SearchResult> {
     const providers = this.registry.getAll()
@@ -132,9 +153,25 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
       )
     }
 
+    // ── Ranking ───────────────────────────────────────────────────────────────
+    //
+    // After merging and deduplication, pass the flat list through RankingEngine.
+    // The engine computes an internal rankingScore for each company, sorts by it
+    // descending, and strips the score field before returning — so ranked
+    // companies are plain MockCompany objects with no extra fields.
+    //
+    // rankingScore is an internal detail of this layer and must never reach UI.
+    //
+    const rankedCompanies = this.rankingEngine.rank(allCompanies, hunt)
+
+    console.info(
+      `[SearchOrchestrator] Ranking complete. ` +
+        `${rankedCompanies.length} companies ordered by relevance.`,
+    )
+
     return {
-      companies: allCompanies,
-      totalFound: allCompanies.length,
+      companies: rankedCompanies,
+      totalFound: rankedCompanies.length,
       query: {
         rawQuery:         hunt.rawQuery,
         industry:         hunt.intentJson.industry,
