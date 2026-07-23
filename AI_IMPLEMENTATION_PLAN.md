@@ -134,7 +134,7 @@ AI_IMPLEMENTATION_PLAN.md обновлен: ДА
 | Pass | Name | Status |
 |------|------|--------|
 | 1 | Type System + DB Schema | `✅ DONE` |
-| 2 | Search Orchestration V4 | `❌ NOT STARTED` |
+| 2 | Search Orchestration V4 | `✅ DONE` |
 | 3 | Contact Discovery V4 | `❌ NOT STARTED` |
 | 4 | Госзакупки + ФССП + LLM Intent | `❌ NOT STARTED` |
 | 5 | AI Context Builder + Frontend V4 | `❌ NOT STARTED` |
@@ -406,8 +406,30 @@ pnpm turbo run build --filter='./packages/*'
 
 ## Pass 2 — Search Orchestration V4
 
-**Status:** `[ ] NOT STARTED`
-**Completion note:** _(fill in when done)_
+**Status:** `✅ DONE — 2026-07-23`
+
+**Completion note:**
+- **Создано (10 файлов):**
+  - `apps/api/src/search/search-plan-builder.ts` — `SearchPlanBuilder.build(hunt): SearchPlan`, маппинг индустрии → 2GIS рубрики, tier1/tier2 разметка
+  - `apps/api/src/search/signal-engine.ts` — `SignalEngine.extractSignals()`, маппинг legacy CompanySignal → V4 Signal, `new_business` по foundedYear, `growing`/`hiring` по keywords в description
+  - `apps/api/src/search/scoring/timing-score.ts` — `TimingScoreCalculator`, recencyMultiplier (0-3д=1.0, 4-7=0.8, 8-14=0.6, 15-30=0.4, 31-90=0.2)
+  - `apps/api/src/search/scoring/icp-score.ts` — `ICPScoreCalculator`, 6 критериев + penalties за negative signals
+  - `apps/api/src/search/scoring/completeness-score.ts` — `CompletenessCalculator`, 5 критериев 0–100
+  - `apps/api/src/search/v4-ranking-engine.ts` — `V4RankingEngine implements RankingEngine`, `finalScore = ICP*0.6 + timing*0.3 + completeness*0.1`
+  - `apps/api/src/search/filter-stage.ts` — `PreRankingFilter`, ликвидированные + low ICP + FSSP flag
+  - `apps/api/src/search/dedup/dedup-engine.ts` — `DedupEngine`, INN→OGRN→Domain→Jaro-Winkler≥0.88 (flag only), merge strategy per spec
+  - `apps/api/src/search/company-registry.ts` — `CompanyRegistry`, `checkPresence()` batch lookup, `WorkspaceStatus` mapping
+  - `apps/api/src/search/persistence/company-persister.ts` — `CompanyPersister.persist()`, upsert by INN/domain, async fire-and-forget
+- **Изменено (6 файлов):**
+  - `apps/api/src/search/types.ts` — добавлен `MergedCompany extends SearchCompany`
+  - `apps/api/src/search/search-orchestrator.ts` — полная замена на V4 tiered pipeline: parallel tier1+2 → dedup → signals → ICP-filter → rankV4 → registry → persist (async)
+  - `apps/api/src/search/provider-registry.ts` — добавлен `tier: ProviderTier`, `getByTier()`, `getAllEntries()`
+  - `apps/api/src/search/setup.ts` — wire `V4RankingEngine` + `getRedisConnection()` как cache
+  - `apps/api/src/routes/hunts.ts` — добавлен `PATCH /:id/rejection-feedback` endpoint
+  - `apps/api/src/application/discover/discover.application-service.ts` — обновлён на `SearchResultV4`, сохранение `searchPlanSummary` в hunt
+- **Реализовано:** Полный V4 pipeline. Redis кэш (tier1=6h, tier2=24h). Компании персистируются в БД после каждого поиска. Endpoint rejection-feedback атомарно дописывает в JSONB.
+- **Проблем нет.** TypeScript: 0 ошибок. Оба workflow запущены.
+- **Следующий агент:** Начинай Pass 3 (Contact Discovery V4). Зависимость выполнена: `RankedCompany` структура с `signalsV4`, `contacts`, `sources`, `aliases` полностью работает. `ContactDiscoveryService` должен заполнить `contacts: ContactCandidate[]` на top-10 компаниях синхронно и 11-50 через BullMQ job.
 
 ### Goal
 Implement the full pipeline for stages 1–9 of V4 spec: tiered discovery, Signal Engine, ICP/Timing scoring, V4 Ranking, dedup v2, CompanyRegistry, Redis cache, company persistence.

@@ -1,8 +1,7 @@
 /**
  * DiscoverApplicationService — единственная точка входа для Discover Flow.
  *
- * Архитектура вызовов:
- *
+ * V4 pipeline:
  *   UI (Discover page)
  *    ↓ POST /api/v1/hunts/:id/search
  *   Route handler (hunts.ts)  ← только валидация + HTTP
@@ -10,52 +9,33 @@
  *   DiscoverApplicationService          ← ВСЯ бизнес-логика здесь
  *    ↓ getHunt / updateStatus
  *   HuntService                         ← персистентность Hunt
- *    ↓ search(hunt)
- *   SearchOrchestrator                  ← провайдеры → merge → dedup
+ *    ↓ search(hunt, workspaceId)
+ *   SearchOrchestratorImpl V4           ← тир1+2 параллельно → dedup → сигналы → ранжирование
  *    ↓
- *   RankingEngine                       ← скоринг и сортировка
- *    ↓
- *   DiscoverResult → Route → HTTP 200
- *
- * Будущие этапы добавляются ТОЛЬКО здесь — UI и Routes не меняются:
- *
- *   execute(input)
- *    ↓ (текущие шаги)
- *    ↓ IntentParser          ← Sprint: реальный LLM-парсер
- *    ↓ SearchOrchestrator    ← уже реализовано
- *    ↓ RankingEngine         ← уже реализовано
- *    ↓ EnrichmentPipeline    ← Sprint: Dadata / Hunter / Snov
- *    ↓ Writer                ← Sprint: persist companies to DB
- *    ↓ ActivityQueue         ← Sprint: очередь задач «Сегодня»
- *    ↓ Inbox                 ← Sprint: входящие ответы
- *
- * Принципы:
- *   • Этот класс не знает про HTTP (нет FastifyRequest/Reply).
- *   • HuntService, SearchOrchestrator принимаются через конструктор →
- *     легко тестировать с заглушками.
- *   • Публичный интерфейс (execute signature + DiscoverResult) не меняется
- *     при добавлении новых шагов внутри.
+ *   DiscoverResult (SearchResultV4) → Route → HTTP 200
  */
 
+import { eq, and } from 'drizzle-orm'
+import { getDb, hunts } from '@ai-sales-os/db'
 import { createLogger } from '@ai-sales-os/logger'
 import type { HuntService } from '../../services/hunt.service.js'
 import type { SearchOrchestrator } from '../../search/search-orchestrator.js'
-import type { SearchResult } from '../../search/types.js'
+import type { SearchResultV4 } from '../../search/types.js'
 
 const logger = createLogger({ name: 'application:discover' })
 
 // ─── Input / Output ───────────────────────────────────────────────────────────
 
 export interface DiscoverExecuteInput {
-  huntId: string
+  huntId:      string
   workspaceId: string
 }
 
 export interface DiscoverResult {
   /** Стабильный идентификатор запущенного Hunt. */
   huntId: string
-  /** Ранжированные результаты поиска. */
-  result: SearchResult
+  /** Ранжированные V4 результаты поиска. */
+  result: SearchResultV4
 }
 
 // ─── Domain errors (без знания о HTTP) ───────────────────────────────────────
@@ -83,19 +63,20 @@ export class SearchFailedError extends Error {
 
 export class DiscoverApplicationService {
   constructor(
-    private readonly huntService: HuntService,
+    private readonly huntService:        HuntService,
     private readonly searchOrchestrator: SearchOrchestrator,
   ) {}
 
   /**
-   * Выполняет полный Discover Flow для существующего Hunt.
+   * Выполняет полный Discover Flow V4 для существующего Hunt.
    *
-   * Шаги (текущая реализация):
+   * Шаги:
    *   1. Загрузить Hunt и проверить принадлежность workspace.
    *   2. Перевести статус в 'searching'.
-   *   3. Запустить SearchOrchestrator (провайдеры → merge → dedup → rank).
-   *   4. Перевести статус в 'completed' (или 'failed' при ошибке).
-   *   5. Вернуть DiscoverResult.
+   *   3. Запустить SearchOrchestratorImpl V4.
+   *   4. Сохранить SearchPlanSummary в hunts.search_plan_summary.
+   *   5. Перевести статус в 'completed' (или 'failed' при ошибке).
+   *   6. Вернуть DiscoverResult.
    *
    * Ошибки:
    *   HuntNotFoundError  — Hunt не существует или принадлежит другому workspace.
@@ -113,10 +94,10 @@ export class DiscoverApplicationService {
     // ── Шаг 2: Перевести в 'searching' ───────────────────────────────────────
     await this.huntService.updateStatus(huntId, workspaceId, 'searching')
 
-    // Сформировать SearchHunt из DB-строки (intentJson — JSONB, нужна безопасная типизация)
+    // Сформировать SearchHunt из DB-строки
     const rawIntent = (huntRow.intentJson ?? {}) as Record<string, unknown>
     const searchHunt = {
-      id: huntRow.id,
+      id:       huntRow.id,
       rawQuery: huntRow.rawQuery,
       intentJson: {
         industry:         typeof rawIntent['industry']         === 'string' ? rawIntent['industry']         : null,
@@ -126,49 +107,48 @@ export class DiscoverApplicationService {
       },
     }
 
-    // ── Шаг 3: SearchOrchestrator ─────────────────────────────────────────────
-    let searchResult: SearchResult
+    // ── Шаг 3: SearchOrchestrator V4 ─────────────────────────────────────────
+    let searchResult: SearchResultV4
     try {
-      searchResult = await this.searchOrchestrator.search(searchHunt)
+      searchResult = await this.searchOrchestrator.search(searchHunt, workspaceId)
     } catch (err: unknown) {
       logger.error({
-        event: 'discover.search.failed',
+        event:  'discover.search.failed',
         huntId,
-        error: err instanceof Error ? err.message : String(err),
+        error:  err instanceof Error ? err.message : String(err),
       })
 
-      // Шаг 4b: перевести в 'failed' (best-effort, не маскирует исходную ошибку)
       await this.huntService.updateStatus(huntId, workspaceId, 'failed').catch(() => undefined)
-
       throw new SearchFailedError(err)
     }
 
-    // ── Шаг 4a: Перевести в 'completed' ──────────────────────────────────────
+    // ── Шаг 4: Сохранить SearchPlanSummary в hunt ─────────────────────────────
+    try {
+      const db = getDb()
+      await db
+        .update(hunts)
+        .set({ searchPlanSummary: searchResult.plan, updatedAt: new Date() })
+        .where(and(eq(hunts.id, huntId), eq(hunts.workspaceId, workspaceId)))
+    } catch (err: unknown) {
+      // Non-critical — plan summary is informational, don't block response
+      logger.warn({
+        event:  'discover.plan_summary_save_failed',
+        huntId,
+        error:  err instanceof Error ? err.message : String(err),
+      })
+    }
+
+    // ── Шаг 5: Перевести в 'completed' ───────────────────────────────────────
     await this.huntService.updateStatus(huntId, workspaceId, 'completed')
 
     logger.info({
-      event: 'discover.completed',
+      event:      'discover.completed',
       huntId,
       totalFound: searchResult.totalFound,
+      processingMs: searchResult.plan.processingMs,
     })
 
-    // ── Шаг 5: Вернуть результат ──────────────────────────────────────────────
+    // ── Шаг 6: Вернуть результат ──────────────────────────────────────────────
     return { huntId, result: searchResult }
-
-    /*
-     * ── БУДУЩИЕ ШАГИ (добавлять сюда, UI и Routes не меняются) ──────────────
-     *
-     * // Шаг 6: EnrichmentPipeline
-     * const enriched = await this.enrichmentPipeline.enrich(searchResult.companies)
-     *
-     * // Шаг 7: Writer — persist companies to DB
-     * await this.companyWriter.write(enriched, workspaceId)
-     *
-     * // Шаг 8: ActivityQueue — поставить задачи «Сегодня»
-     * await this.activityQueue.schedule(enriched, workspaceId)
-     *
-     * // Шаг 9: Inbox — инициализировать входящие для кампаний
-     * await this.inboxService.prepare(huntId, workspaceId)
-     */
   }
 }

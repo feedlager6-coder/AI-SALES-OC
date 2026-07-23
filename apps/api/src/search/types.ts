@@ -205,6 +205,34 @@ export interface FieldProvenance {
 export type WorkspaceStatus = 'new' | 'contacted' | 'in_pipeline' | 'closed'
 
 // ---------------------------------------------------------------------------
+// Merged company — output of DedupEngine, input to SignalEngine + RankingEngine
+// ---------------------------------------------------------------------------
+
+/**
+ * A company after cross-provider deduplication and field merging.
+ * Extends SearchCompany with V4-specific fields populated by DedupEngine.
+ *
+ * signalsV4 is populated by SignalEngine after dedup.
+ * contacts is populated by ContactDiscoveryService (Pass 3).
+ */
+export interface MergedCompany extends SearchCompany {
+  /** V4 Signal objects — populated by SignalEngine after dedup. */
+  signalsV4: Signal[]
+  /** Contact candidates from the discovery waterfall (Pass 3). Empty in Pass 2. */
+  contacts: ContactCandidate[]
+  /** Which provider supplied each field — built by DedupEngine during merge. */
+  sources: FieldProvenance
+  /** Alternative names collected during dedup (ребрендинг, trade vs legal name). */
+  aliases: string[]
+  /** True if DedupEngine found a likely match but did not auto-merge (conservative). */
+  potentialDuplicate?: boolean
+  /** True when two INNs share a domain — holding company pattern. */
+  relatedDomain?: boolean
+  /** OGRN — 13 or 15 digits. May be present from providers that include it. */
+  ogrn?: string | null
+}
+
+// ---------------------------------------------------------------------------
 // Search company types
 // ---------------------------------------------------------------------------
 

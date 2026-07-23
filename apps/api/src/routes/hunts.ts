@@ -1,30 +1,22 @@
 /**
  * Hunt routes — тонкий HTTP-слой для Discover Flow.
  *
- * POST   /api/v1/hunts            — создать Hunt (draft)
- * GET    /api/v1/hunts/:id        — получить Hunt по ID
- * PATCH  /api/v1/hunts/:id/status — изменить статус Hunt
- * POST   /api/v1/hunts/:id/search — запустить Discover Flow, вернуть SearchResult
- *
- * Архитектура вызовов:
- *
- *   Frontend (Discover page)
- *    ↓ POST /api/v1/hunts/:id/search
- *   Route handler (этот файл) ← только валидация + HTTP-ответ
- *    ↓ discoverApplicationService.execute({ huntId, workspaceId })
- *   DiscoverApplicationService  ← вся бизнес-логика
- *    ↓
- *   HuntService → SearchOrchestrator → RankingEngine
- *    ↓
- *   SearchResult JSON → Frontend
+ * POST   /api/v1/hunts                       — создать Hunt (draft)
+ * GET    /api/v1/hunts/:id                   — получить Hunt по ID
+ * PATCH  /api/v1/hunts/:id/status            — изменить статус Hunt
+ * POST   /api/v1/hunts/:id/search            — запустить Discover Flow, вернуть SearchResultV4
+ * PATCH  /api/v1/hunts/:id/rejection-feedback — добавить фидбек по компании
  *
  * Правило: route handler не содержит бизнес-логики.
  * Всё, что связано с Hunt lifecycle и поиском, живёт в
  * DiscoverApplicationService (apps/api/src/application/discover/).
  */
 
+import { eq, and } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
+import { getDb, hunts } from '@ai-sales-os/db'
 import { huntService } from '../services/hunt.service.js'
 import { workspaceContextPlugin } from '../plugins/workspace-context.js'
 import {
@@ -54,6 +46,11 @@ const UpdateStatusBodySchema = z.object({
   status: z.enum(['draft', 'confirmed', 'searching', 'completed', 'failed']),
 })
 
+const RejectionFeedbackBodySchema = z.object({
+  companyId: z.string().min(1),
+  reason:    z.enum(['wrong_region', 'wrong_size', 'already_client', 'liquidated', 'other']),
+})
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 export const huntsRoutes: FastifyPluginAsync = async (app) => {
@@ -65,7 +62,7 @@ export const huntsRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post('/', async (request, reply) => {
     const { rawQuery, intentJson } = CreateHuntBodySchema.parse(request.body)
-    const { workspaceId, userId } = request
+    const { workspaceId, userId }  = request
 
     const hunt = await huntService.createHunt({
       workspaceId,
@@ -87,7 +84,7 @@ export const huntsRoutes: FastifyPluginAsync = async (app) => {
    * Fetch a Hunt by ID. Returns 404 if not found in this workspace.
    */
   app.get('/:id', async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const { id }          = request.params as { id: string }
     const { workspaceId } = request
 
     const hunt = await huntService.getHunt(id, workspaceId)
@@ -105,8 +102,8 @@ export const huntsRoutes: FastifyPluginAsync = async (app) => {
    * Advance a Hunt to the next status.
    */
   app.patch('/:id/status', async (request, reply) => {
-    const { id } = request.params as { id: string }
-    const { status } = UpdateStatusBodySchema.parse(request.body)
+    const { id }          = request.params as { id: string }
+    const { status }      = UpdateStatusBodySchema.parse(request.body)
     const { workspaceId } = request
 
     const hunt = await huntService.updateStatus(id, workspaceId, status)
@@ -116,18 +113,11 @@ export const huntsRoutes: FastifyPluginAsync = async (app) => {
   /**
    * POST /api/v1/hunts/:id/search
    *
-   * Запускает Discover Flow и возвращает ранжированные результаты.
-   *
-   * Route handler отвечает только за:
-   *   • валидацию параметров запроса
-   *   • делегирование в DiscoverApplicationService
-   *   • маппинг доменных ошибок в HTTP-коды
-   *
-   * Бизнес-логика (Hunt lifecycle, SearchOrchestrator, RankingEngine)
-   * живёт в DiscoverApplicationService — не здесь.
+   * Запускает Discover Flow V4 и возвращает ранжированные результаты.
+   * Ответ включает plan: SearchPlanSummary (источники, счётчики, время).
    */
   app.post('/:id/search', async (request, reply) => {
-    const { id } = request.params as { id: string }
+    const { id }          = request.params as { id: string }
     const { workspaceId } = request
 
     try {
@@ -147,5 +137,53 @@ export const huntsRoutes: FastifyPluginAsync = async (app) => {
       }
       throw err
     }
+  })
+
+  /**
+   * PATCH /api/v1/hunts/:id/rejection-feedback
+   *
+   * Запись фидбека пользователя о нерелевантной компании.
+   * Добавляет запись в hunts.rejection_feedback (JSONB массив).
+   * Используется для дообучения ICP-весов (Pass 4).
+   */
+  app.patch('/:id/rejection-feedback', async (request, reply) => {
+    const { id }              = request.params as { id: string }
+    const { workspaceId }     = request
+    const { companyId, reason } = RejectionFeedbackBodySchema.parse(request.body)
+
+    // Verify hunt exists and belongs to workspace
+    const hunt = await huntService.getHunt(id, workspaceId)
+    if (!hunt) {
+      return reply.status(404).send({
+        error: { code: 'HUNT_NOT_FOUND', message: 'Hunt not found', statusCode: 404 },
+      })
+    }
+
+    const db = getDb()
+
+    // Append feedback entry to rejection_feedback JSONB array atomically
+    const feedbackEntry = {
+      companyId,
+      reason,
+      huntId:    id,
+      createdAt: new Date().toISOString(),
+    }
+
+    await db
+      .update(hunts)
+      .set({
+        rejectionFeedback: sql`rejection_feedback || ${JSON.stringify([feedbackEntry])}::jsonb`,
+        updatedAt:         new Date(),
+      })
+      .where(and(eq(hunts.id, id), eq(hunts.workspaceId, workspaceId)))
+
+    logger.info({
+      event:     'hunt.rejection_feedback',
+      huntId:    id,
+      companyId,
+      reason,
+    })
+
+    return reply.status(200).send({ data: { ok: true } })
   })
 }
