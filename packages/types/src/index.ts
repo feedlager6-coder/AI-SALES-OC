@@ -419,6 +419,41 @@ export interface Task {
   createdAt: ISO8601
 }
 
+// ─── Hunt ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Hunt — the central entity of the Discover flow.
+ *
+ * Created the moment a user confirms their search intent. Every search
+ * session is backed by a persisted Hunt so we have a full audit trail
+ * and a stable ID for attaching results, provider logs, and future
+ * async enrichment jobs.
+ *
+ * Status machine:
+ *   draft → confirmed → searching → completed
+ *                    ↘               ↗
+ *                      → failed ────
+ */
+export type HuntStatus = 'draft' | 'confirmed' | 'searching' | 'completed' | 'failed'
+
+export interface HuntIntentJson {
+  industry: string | null
+  region: string | null
+  companySize: string | null
+  clarifyingAnswer: string | null
+}
+
+export interface Hunt {
+  id: UUID
+  workspaceId: UUID
+  createdBy: UUID
+  rawQuery: string
+  intentJson: HuntIntentJson
+  status: HuntStatus
+  createdAt: ISO8601
+  updatedAt: ISO8601
+}
+
 // ─── API Responses ────────────────────────────────────────────────────────────
 
 export interface ApiError {

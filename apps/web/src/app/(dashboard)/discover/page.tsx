@@ -8,6 +8,8 @@ import { InteractiveIntentCard } from '@/components/discover/interactive-intent-
 import { SearchProgress } from '@/components/discover/search-progress'
 import { SearchResults } from '@/components/discover/search-results'
 import { huntService } from '@/lib/search/hunt-service'
+import { createHunt, updateHuntStatus } from '@/lib/hunt/hunt-api'
+import type { Hunt } from '@/lib/hunt/hunt-api'
 import type { ConfirmedIntent, ParsedIntent } from '@/lib/intent/types'
 import type { SearchResult } from '@/lib/search/types'
 
@@ -16,7 +18,7 @@ import type { SearchResult } from '@/lib/search/types'
 //   search → confirm → searching → results
 //     ↑_________________________________|   (new search)
 //   confirm → search                        (edit)
-//   searching → error                       (provider failure)
+//   searching → error                       (hunt creation or provider failure)
 //
 
 type Phase = 'search' | 'confirm' | 'searching' | 'results' | 'error'
@@ -42,8 +44,10 @@ export default function DiscoverPage() {
 
   // Stores the search promise result while the animation plays
   const pendingResultRef  = useRef<SearchResult | null>(null)
-  // Set to true when the search promise rejects
+  // Set to true when hunt creation or search rejects
   const searchFailedRef   = useRef<boolean>(false)
+  // Active hunt — used to update status after search settles
+  const activeHuntRef     = useRef<Hunt | null>(null)
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -80,25 +84,67 @@ export default function DiscoverPage() {
     }, 0)
   }
 
+  /**
+   * Called when the user confirms their intent.
+   *
+   * New flow (v2):
+   *   Intent confirmed
+   *     → POST /api/v1/hunts   (create Hunt, get huntId)
+   *     → PATCH hunt status → 'confirmed'
+   *     → huntService.search(hunt)   (providers receive the full Hunt)
+   *     → PATCH hunt status → 'completed' | 'failed'
+   *
+   * The animation runs in parallel (~3s). Hunt creation + search fire
+   * immediately; results are stored in pendingResultRef and handed to the
+   * UI once the animation finishes (see handleSearchAnimationComplete).
+   */
   const handleConfirm = (result: ConfirmedIntent) => {
-    pendingResultRef.current = null
-    searchFailedRef.current  = false
+    pendingResultRef.current  = null
+    searchFailedRef.current   = false
+    activeHuntRef.current     = null
     setPhase('searching')
 
-    // Fire search in parallel with the animation (~2.4s).
-    // The animation lasts ~3.3s, so data is ready before it finishes.
-    huntService.search({
-      rawQuery:         result.rawQuery,
-      industry:         result.parsed.industry,
-      region:           result.parsed.region,
-      companySize:      result.parsed.companySize,
-      clarifyingAnswer: result.clarifyingAnswer,
-    }).then((data) => {
-      pendingResultRef.current = data
-    }).catch((err: unknown) => {
-      console.error('[DiscoverPage] Search failed:', err)
-      searchFailedRef.current = true
-    })
+    // Fire the full Hunt lifecycle asynchronously so the animation can run.
+    ;(async () => {
+      let hunt: Hunt | null = null
+      try {
+        // Step 1 — Persist the Hunt before touching any search provider.
+        hunt = await createHunt({
+          rawQuery: result.rawQuery,
+          intentJson: {
+            industry:         result.parsed.industry,
+            region:           result.parsed.region,
+            companySize:      result.parsed.companySize,
+            clarifyingAnswer: result.clarifyingAnswer,
+          },
+        })
+        activeHuntRef.current = hunt
+
+        // Step 2 — Advance to 'confirmed' (fire-and-forget; non-blocking).
+        updateHuntStatus(hunt.id, 'confirmed').catch((err: unknown) => {
+          console.warn('[DiscoverPage] Status update to confirmed failed:', err)
+        })
+
+        // Step 3 — Run search providers with the full Hunt object.
+        const data = await huntService.search(hunt)
+        pendingResultRef.current = data
+
+        // Step 4 — Mark Hunt as completed.
+        updateHuntStatus(hunt.id, 'completed').catch((err: unknown) => {
+          console.warn('[DiscoverPage] Status update to completed failed:', err)
+        })
+      } catch (err: unknown) {
+        console.error('[DiscoverPage] Hunt or search failed:', err)
+        searchFailedRef.current = true
+
+        // Best-effort: mark Hunt as failed if we managed to create it.
+        if (hunt) {
+          updateHuntStatus(hunt.id, 'failed').catch((e: unknown) => {
+            console.warn('[DiscoverPage] Status update to failed failed:', e)
+          })
+        }
+      }
+    })()
   }
 
   // Called by SearchProgress when the animation finishes
@@ -110,7 +156,7 @@ export default function DiscoverPage() {
       return
     }
 
-    // Immediate failure — provider already rejected
+    // Immediate failure — hunt creation or provider already rejected
     if (searchFailedRef.current) {
       setPhase('error')
       return
@@ -135,8 +181,9 @@ export default function DiscoverPage() {
     setQuery('')
     setParsedIntent(null)
     setSearchResult(null)
-    pendingResultRef.current = null
-    searchFailedRef.current  = false
+    pendingResultRef.current  = null
+    searchFailedRef.current   = false
+    activeHuntRef.current     = null
     setPhase('search')
     setTimeout(() => textareaRef.current?.focus(), 0)
   }

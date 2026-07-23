@@ -1,18 +1,30 @@
 /**
- * HuntService — единственная точка входа для поиска в UI.
+ * HuntService (frontend) — orchestrates search providers for a given Hunt.
  *
- * Принимает список SearchProvider через конструктор (dependency injection).
- * Запускает все провайдеры параллельно и объединяет результаты.
+ * Accepts the full Hunt object (returned by the backend after creation)
+ * and fans it out to all registered SearchProviders in parallel. Results
+ * are merged and deduplicated by company id.
  *
- * Сегодня: один MockSearchProvider.
- * Завтра: добавить TwoGISProvider, HHProvider и т.д. — UI не меняется.
+ * Flow:
+ *   UI confirms intent
+ *     → backend creates Hunt (via hunt-api.ts)
+ *     → HuntService.search(hunt)           ← you are here
+ *         → MockSearchProvider.search(hunt) (or real providers)
+ *         → merge & deduplicate
+ *     → SearchResult returned to UI
  *
- * Порядок объединения: результаты идут в том же порядке, что и providers[].
- * Дубликаты по id удаляются (первый провайдер имеет приоритет).
+ * To add a real provider (e.g. TwoGISProvider):
+ *   1. Create a class implementing SearchProvider.
+ *   2. Append it to the providers[] array in the singleton at the bottom.
+ *   3. Zero UI changes required.
+ *
+ * Provider order matters for merge priority: results from providers[0]
+ * win deduplication over providers[1], etc.
  */
 
 import type { SearchProvider } from './search-provider'
-import type { SearchParams, SearchResult } from './types'
+import type { Hunt } from '../hunt/hunt-api'
+import type { SearchResult } from './types'
 import { MockSearchProvider } from './mock-search-provider'
 
 export class HuntService {
@@ -22,11 +34,11 @@ export class HuntService {
     }
   }
 
-  async search(params: SearchParams): Promise<SearchResult> {
+  async search(hunt: Hunt): Promise<SearchResult> {
     // Run all providers in parallel — failure-tolerant: one provider crashing
     // does not block results from the others.
     const settlements = await Promise.allSettled(
-      this.providers.map((provider) => provider.search(params)),
+      this.providers.map((provider) => provider.search(hunt)),
     )
 
     // Log failures; collect successful results in provider order.
@@ -58,14 +70,24 @@ export class HuntService {
     return {
       companies,
       totalFound: companies.length,
-      query: params,
+      // Reconstruct SearchParams from Hunt for UI compatibility
+      query: {
+        rawQuery:         hunt.rawQuery,
+        industry:         hunt.intentJson.industry,
+        region:           hunt.intentJson.region,
+        companySize:      hunt.intentJson.companySize,
+        clarifyingAnswer: hunt.intentJson.clarifyingAnswer,
+      },
     }
   }
 }
 
 // ─── Default singleton ────────────────────────────────────────────────────────
 //
-// To swap providers for the whole app, change this one line.
-// To override per-component (e.g. in tests), instantiate HuntService directly.
+// Add providers here as they become available:
+//   new TwoGISProvider()
+//   new HHProvider()
+//   new DadataProvider()
+//   new HunterProvider()
 //
 export const huntService = new HuntService([new MockSearchProvider()])

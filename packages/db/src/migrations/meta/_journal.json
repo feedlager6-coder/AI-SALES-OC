@@ -29,6 +29,13 @@
       "when": 1784000000001,
       "tag": "0003_add_workspace_name_to_users",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1753228800000,
+      "tag": "0004_hunt_entity",
+      "breakpoints": true
     }
   ]
 }
