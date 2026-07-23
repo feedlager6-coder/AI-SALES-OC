@@ -12,6 +12,7 @@ import {
   Zap,
   ChevronsUpDown,
   Search,
+  Briefcase,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/lib/auth-client'
@@ -28,6 +29,7 @@ const navItems = [
 ]
 
 const bottomNavItems = [
+  { href: '/sender-profile', label: 'О моей компании', icon: Briefcase },
   { href: '/settings', label: 'Настройки', icon: Settings },
 ]
 
