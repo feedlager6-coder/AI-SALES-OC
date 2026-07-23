@@ -1,37 +1,37 @@
 /**
- * Hunt routes — REST API for the Hunt entity.
+ * Hunt routes — тонкий HTTP-слой для Discover Flow.
  *
- * POST   /api/v1/hunts            — create a new Hunt (draft)
- * GET    /api/v1/hunts/:id        — fetch a Hunt by ID
- * PATCH  /api/v1/hunts/:id/status — advance Hunt status
- * POST   /api/v1/hunts/:id/search — execute search for a Hunt, return SearchResult
+ * POST   /api/v1/hunts            — создать Hunt (draft)
+ * GET    /api/v1/hunts/:id        — получить Hunt по ID
+ * PATCH  /api/v1/hunts/:id/status — изменить статус Hunt
+ * POST   /api/v1/hunts/:id/search — запустить Discover Flow, вернуть SearchResult
  *
- * POST /api/v1/hunts/:id/search is the primary endpoint for the Discover flow.
- * It runs all registered SearchProviders, deduplicates, ranks, and returns the
- * result as JSON. The frontend never executes any search logic — it only
- * renders the response.
- *
- * Architecture:
+ * Архитектура вызовов:
  *
  *   Frontend (Discover page)
  *    ↓ POST /api/v1/hunts/:id/search
- *   Route handler (this file)
- *    ↓ searchOrchestrator.search(hunt)
- *   SearchOrchestratorImpl
- *    ↓ (sequential)
- *   SearchProviders → Merge → Dedup → RankingEngine
+ *   Route handler (этот файл) ← только валидация + HTTP-ответ
+ *    ↓ discoverApplicationService.execute({ huntId, workspaceId })
+ *   DiscoverApplicationService  ← вся бизнес-логика
+ *    ↓
+ *   HuntService → SearchOrchestrator → RankingEngine
  *    ↓
  *   SearchResult JSON → Frontend
  *
- * All providers, deduplication, and ranking run server-side.
- * Frontend never imports providers, registry, or ranking engine.
+ * Правило: route handler не содержит бизнес-логики.
+ * Всё, что связано с Hunt lifecycle и поиском, живёт в
+ * DiscoverApplicationService (apps/api/src/application/discover/).
  */
 
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { huntService } from '../services/hunt.service.js'
-import { searchOrchestrator } from '../search/setup.js'
 import { workspaceContextPlugin } from '../plugins/workspace-context.js'
+import {
+  discoverApplicationService,
+  HuntNotFoundError,
+  SearchFailedError,
+} from '../application/discover/index.js'
 import { createLogger } from '@ai-sales-os/logger'
 
 const logger = createLogger({ name: 'api:hunts-route' })
@@ -116,81 +116,36 @@ export const huntsRoutes: FastifyPluginAsync = async (app) => {
   /**
    * POST /api/v1/hunts/:id/search
    *
-   * Execute a full search for a Hunt and return ranked results.
+   * Запускает Discover Flow и возвращает ранжированные результаты.
    *
-   * This is the server-side search entry point. All business logic lives here:
-   *   1. Fetch + verify Hunt ownership
-   *   2. Advance status to 'searching'
-   *   3. Run SearchOrchestrator (providers → merge → dedup → ranking)
-   *   4. Advance status to 'completed' (or 'failed' on error)
-   *   5. Return SearchResult
+   * Route handler отвечает только за:
+   *   • валидацию параметров запроса
+   *   • делегирование в DiscoverApplicationService
+   *   • маппинг доменных ошибок в HTTP-коды
    *
-   * The frontend receives plain JSON — it has no knowledge of providers,
-   * the registry, or ranking internals.
+   * Бизнес-логика (Hunt lifecycle, SearchOrchestrator, RankingEngine)
+   * живёт в DiscoverApplicationService — не здесь.
    */
   app.post('/:id/search', async (request, reply) => {
     const { id } = request.params as { id: string }
     const { workspaceId } = request
 
-    // ── Step 1: Fetch and verify ownership ──────────────────────────────────
-    const huntRow = await huntService.getHunt(id, workspaceId)
-    if (!huntRow) {
-      return reply.status(404).send({
-        error: { code: 'HUNT_NOT_FOUND', message: 'Hunt not found', statusCode: 404 },
-      })
-    }
-
-    // ── Step 2: Advance to 'searching' ──────────────────────────────────────
-    await huntService.updateStatus(id, workspaceId, 'searching')
-
-    // Build the SearchHunt from the DB row (intentJson is JSONB — cast safely)
-    const rawIntent = (huntRow.intentJson ?? {}) as Record<string, unknown>
-    const searchHunt = {
-      id:       huntRow.id,
-      rawQuery: huntRow.rawQuery,
-      intentJson: {
-        industry:         typeof rawIntent['industry']         === 'string' ? rawIntent['industry']         : null,
-        region:           typeof rawIntent['region']           === 'string' ? rawIntent['region']           : null,
-        companySize:      typeof rawIntent['companySize']      === 'string' ? rawIntent['companySize']      : null,
-        clarifyingAnswer: typeof rawIntent['clarifyingAnswer'] === 'string' ? rawIntent['clarifyingAnswer'] : null,
-      },
-    }
-
-    // ── Step 3: Run SearchOrchestrator ──────────────────────────────────────
     try {
-      const result = await searchOrchestrator.search(searchHunt)
-
-      // ── Step 4a: Advance to 'completed' ────────────────────────────────
-      await huntService.updateStatus(id, workspaceId, 'completed')
-
-      logger.info({
-        event: 'hunt.search.completed',
-        huntId: id,
-        totalFound: result.totalFound,
-      })
-
+      const { result } = await discoverApplicationService.execute({ huntId: id, workspaceId })
       return reply.status(200).send({ data: result })
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
-
-      logger.error({
-        event: 'hunt.search.failed',
-        huntId: id,
-        error: message,
-      })
-
-      // ── Step 4b: Advance to 'failed' ────────────────────────────────────
-      await huntService.updateStatus(id, workspaceId, 'failed').catch(() => {
-        // Best-effort — do not mask the original error
-      })
-
-      return reply.status(502).send({
-        error: {
-          code:       'SEARCH_FAILED',
-          message:    'Search failed — all providers returned errors.',
-          statusCode: 502,
-        },
-      })
+      if (err instanceof HuntNotFoundError) {
+        return reply.status(404).send({
+          error: { code: 'HUNT_NOT_FOUND', message: 'Hunt not found', statusCode: 404 },
+        })
+      }
+      if (err instanceof SearchFailedError) {
+        logger.error({ event: 'hunt.search.failed', huntId: id, error: err.message })
+        return reply.status(502).send({
+          error: { code: 'SEARCH_FAILED', message: 'Search failed — all providers returned errors.', statusCode: 502 },
+        })
+      }
+      throw err
     }
   })
 }

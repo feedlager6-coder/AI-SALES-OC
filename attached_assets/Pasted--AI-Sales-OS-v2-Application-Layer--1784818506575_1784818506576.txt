@@ -1,0 +1,139 @@
+Продолжаем реализацию AI Sales OS v2.
+Следующая задача — создать Application Layer, который станет единственной точкой входа для всего Discover Flow.
+Цель
+После этой задачи UI больше никогда не должен самостоятельно координировать этапы поиска.
+Вместо этого архитектура должна выглядеть так:
+UI
+    ↓
+DiscoverApplicationService
+    ↓
+IntentParser
+    ↓
+HuntService
+    ↓
+SearchOrchestrator
+    ↓
+RankingEngine
+    ↓
+(в будущем)
+EnrichmentPipeline
+Writer
+ActivityQueue
+Inbox
+
+⸻
+
+Требования
+1.
+Создать новый слой
+apps/api/src/application/
+или
+apps/api/src/application/discover/
+(выбрать наиболее подходящую структуру).
+
+⸻
+
+2.
+Создать
+DiscoverApplicationService
+с публичным методом
+startDiscovery(...)
+или
+execute(...)
+(выбрать наиболее удачное имя).
+
+⸻
+
+3.
+На текущем этапе сервис должен выполнять только существующие шаги:
+1. 
+создать Hunt
+↓
+2. 
+запустить SearchOrchestrator
+↓
+3. 
+получить SearchResult
+↓
+4. 
+вернуть результат.
+Никакой новой логики пока не добавлять.
+
+⸻
+
+4.
+Никакой бизнес-код не должен остаться в route handler.
+Route должен стать максимально тонким.
+Пример:
+HTTP Request
+
+↓
+
+валидация
+
+↓
+
+DiscoverApplicationService.execute()
+
+↓
+
+HTTP Response
+
+⸻
+
+5.
+SearchOrchestrator не должен знать про HTTP.
+HuntService не должен знать про HTTP.
+RankingEngine не должен знать про HTTP.
+Все они вызываются только через Application Service.
+
+⸻
+
+6.
+Сделать архитектуру готовой к следующим этапам без изменения публичного интерфейса:
+IntentParser
+
+↓
+
+Search
+
+↓
+
+Ranking
+
+↓
+
+Enrichment
+
+↓
+
+Writer
+
+↓
+
+Activity Queue
+
+↓
+
+Inbox
+То есть позже новые шаги должны добавляться только внутри Application Service.
+UI и Routes изменяться не должны.
+
+⸻
+
+7.
+Не менять UI.
+Не менять REST API.
+Не подключать реальные API.
+Не использовать AI.
+Не менять существующие SearchProvider.
+
+⸻
+
+После завершения предоставить отчёт.
+Обязательно показать:
+итоговую схему вызовов;
+какие классы теперь участвуют в Discover Flow;
+какие зависимости удалось убрать;
+какие будущие этапы теперь можно будет добавить без изменения UI;
+проверить успешную сборку проекта.
