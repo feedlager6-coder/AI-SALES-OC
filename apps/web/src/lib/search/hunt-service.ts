@@ -26,6 +26,7 @@ import type { SearchOrchestrator } from './search-orchestrator'
 import { SearchOrchestratorImpl } from './search-orchestrator'
 import { ProviderRegistry } from './provider-registry'
 import { MockSearchProvider } from './mock-search-provider'
+import { TwoGISProvider } from './providers/two-gis'
 
 export class HuntService {
   constructor(private readonly orchestrator: SearchOrchestrator) {}
@@ -37,15 +38,13 @@ export class HuntService {
 
 // ─── Provider registry ────────────────────────────────────────────────────────
 //
-// Register providers here. Order determines deduplication priority:
-// companies from earlier providers win over later ones.
-//
-// To add a real provider when it's ready:
-//   import { TwoGISProvider } from './providers/two-gis-provider'
-//   providerRegistry.register(new TwoGISProvider())
+// Registration order = deduplication priority (first wins).
+// To add a real provider: import it and call providerRegistry.register().
+// Nothing else needs to change.
 //
 export const providerRegistry = new ProviderRegistry()
 providerRegistry.register(new MockSearchProvider())
+providerRegistry.register(new TwoGISProvider())   // MockTwoGISClient until useMock=false
 
 // ─── Orchestrator singleton ───────────────────────────────────────────────────
 
