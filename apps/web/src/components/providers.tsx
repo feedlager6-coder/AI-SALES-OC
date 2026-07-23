@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Toaster } from 'sonner'
+import { VipSessionProvider } from '@/components/vip-session-provider'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -20,13 +21,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
-      <Toaster
-        position="bottom-right"
-        theme="dark"
-        richColors
-        duration={4000}
-      />
+      <VipSessionProvider>
+        {children}
+        <Toaster
+          position="bottom-right"
+          theme="dark"
+          richColors
+          duration={4000}
+        />
+      </VipSessionProvider>
     </QueryClientProvider>
   )
 }

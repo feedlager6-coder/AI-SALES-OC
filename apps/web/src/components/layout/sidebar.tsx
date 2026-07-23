@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
   Building2,
@@ -15,7 +15,8 @@ import {
   Briefcase,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useSession } from '@/lib/auth-client'
+import { useSession, signOut } from '@/lib/auth-client'
+import { useVipSession } from '@/components/vip-session-provider'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
@@ -45,16 +46,40 @@ function UserInitials({ name, email }: { name?: string | null; email?: string | 
 
 export function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  // Real Better Auth session (requires API + DB)
   const { data: session } = useSession()
-  const user = session?.user
+  // VIP session (no DB needed — from httpOnly cookie via /api/vip-login)
+  const vipUser = useVipSession()
+
+  // Merge: real session takes priority; VIP is the fallback.
+  // Typed loosely so both Better Auth's user shape and the VIP mock satisfy it.
+  const user =
+    (session?.user as { name?: string | null | undefined; email?: string | null | undefined } | undefined)
+    ?? (vipUser ? { name: vipUser.name as string | null | undefined, email: vipUser.email as string | null | undefined } : null)
+  const isVip = !session?.user && !!vipUser
 
   const { data: workspaceData } = useQuery({
     queryKey: ['workspace-me'],
     queryFn: () => api.workspace.me(),
     staleTime: 5 * 60 * 1000,
-    enabled: !!user,
+    // Only fetch when we have a real session — VIP users get a static workspace name
+    enabled: !!session?.user,
   })
-  const workspaceName = workspaceData?.data?.name ?? 'Рабочее пространство'
+  const workspaceName = workspaceData?.data?.name ?? (isVip ? vipUser?.workspaceName : 'Рабочее пространство')
+
+  async function handleSignOut() {
+    if (isVip) {
+      // VIP logout: clear the cookie via DELETE /api/vip-login
+      await fetch('/api/vip-login', { method: 'DELETE', credentials: 'include' })
+      router.push('/login')
+      router.refresh()
+    } else {
+      await signOut()
+      router.push('/login')
+    }
+  }
 
   return (
     <div
@@ -117,8 +142,12 @@ export function Sidebar() {
 
         {/* User info */}
         {user && (
-          <div className="mt-1 flex items-center gap-2.5 rounded-md px-3 py-2 cursor-default">
-            <UserInitials name={user.name} email={user.email} />
+          <button
+            onClick={handleSignOut}
+            className="mt-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left hover:bg-accent transition-colors group"
+            title="Выйти"
+          >
+            <UserInitials name={user.name ?? null} email={user.email ?? null} />
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-foreground truncate">
                 {user.name ?? user.email}
@@ -130,7 +159,7 @@ export function Sidebar() {
               )}
             </div>
             <ChevronsUpDown className="h-3 w-3 shrink-0 text-muted-foreground/50" />
-          </div>
+          </button>
         )}
       </div>
     </div>

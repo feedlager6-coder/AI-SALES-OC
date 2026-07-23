@@ -10,10 +10,23 @@ import { authClient } from '@/lib/auth-client'
 
 const loginSchema = z.object({
   email: z.string().email('Введите корректный email'),
-  password: z.string().min(8, 'Минимум 8 символов'),
+  password: z.string().min(1, 'Введите пароль'),
 })
 
 type LoginFormData = z.infer<typeof loginSchema>
+
+async function tryVipLogin(email: string, password: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/vip-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
 
 export function LoginForm() {
   const router = useRouter()
@@ -33,6 +46,15 @@ export function LoginForm() {
     setError(null)
 
     try {
+      // ── VIP fast-path: try local session first (no DB / API server needed) ──
+      const vipOk = await tryVipLogin(data.email, data.password)
+      if (vipOk) {
+        router.push('/discover')
+        router.refresh()
+        return
+      }
+
+      // ── Normal Better Auth flow ───────────────────────────────────────────
       const { error: authError } = await authClient.signIn.email({
         email: data.email,
         password: data.password,
