@@ -2,12 +2,14 @@
  * SearchProvider — contract that every data-source adapter must satisfy.
  *
  * Each provider receives the full Hunt object so it has access to both
- * the raw query and the structured intent fields. This allows providers
- * to implement their own query strategies without being limited to the
- * pre-parsed fields.
+ * the raw query and the structured intent fields. Providers are free to
+ * implement their own query strategies — rule-based, API-driven, or AI-
+ * assisted — as long as they return a SearchResult.
  *
- * Implementations (current and future):
+ * Current implementations:
  *   MockSearchProvider   — hardcoded mock data, used in development
+ *
+ * Future implementations (plug in without changing anything else):
  *   TwoGISProvider       — 2GIS API (companies by geo / category)
  *   HHProvider           — HH.ru API (companies hiring in a niche)
  *   DadataProvider       — Dadata / ЕГРЮЛ (company registry + enrichment)
@@ -15,8 +17,8 @@
  *
  * To add a new provider:
  *   1. Create a class that implements SearchProvider.
- *   2. Pass it to HuntService alongside (or instead of) existing providers.
- *   3. Zero UI changes required.
+ *   2. Register it: providerRegistry.register(new MyProvider())
+ *   3. Zero changes to SearchOrchestrator, HuntService, or UI required.
  */
 
 import type { Hunt } from '../hunt/hunt-api'
@@ -25,13 +27,22 @@ import type { SearchResult } from './types'
 export type { Hunt }
 
 export interface SearchProvider {
-  /** Human-readable identifier used in logs and debugging. */
-  readonly name: string
+  /**
+   * Stable machine-readable identifier, e.g. 'mock', '2gis', 'hhru'.
+   * Used as a key in logs, metrics, and dedup provenance tracking.
+   */
+  readonly providerId: string
 
   /**
-   * Execute a search and return a (possibly partial) result set.
-   * The Hunt contains both the raw query and the parsed intent fields.
-   * HuntService merges results from all registered providers.
+   * Human-readable name shown in logs and debugging output.
+   * e.g. 'Mock Search Provider', '2GIS', 'HH.ru'
+   */
+  readonly providerName: string
+
+  /**
+   * Execute a search against this data source.
+   * The Hunt contains both the raw query and the structured intent fields.
+   * SearchOrchestrator calls this and merges results across all providers.
    */
   search(hunt: Hunt): Promise<SearchResult>
 }

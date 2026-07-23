@@ -22,6 +22,20 @@ export interface CompanyContact {
 
 export interface MockCompany {
   id: string
+
+  /**
+   * Russian Tax ID (ИНН). Used as the primary deduplication key across
+   * providers — a company with a known INN will never appear twice in
+   * merged results even if two providers return it independently.
+   */
+  inn?: string | null
+
+  /**
+   * Company website / domain (without protocol), e.g. "stroygrupp.ru".
+   * Used as the secondary deduplication key when INN is absent.
+   */
+  website?: string | null
+
   name: string
   industry: string
   region: string
@@ -30,7 +44,6 @@ export interface MockCompany {
   description: string
   contact: CompanyContact
   signals: CompanySignal[]
-  website?: string
   foundedYear?: number
 }
 

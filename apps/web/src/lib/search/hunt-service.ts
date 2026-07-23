@@ -1,93 +1,59 @@
 /**
- * HuntService (frontend) — orchestrates search providers for a given Hunt.
+ * HuntService (frontend) — thin bridge between the Discover page and
+ * the SearchOrchestrator.
  *
- * Accepts the full Hunt object (returned by the backend after creation)
- * and fans it out to all registered SearchProviders in parallel. Results
- * are merged and deduplicated by company id.
+ * The Discover page calls huntService.search(hunt); this class delegates
+ * that call directly to the orchestrator. No provider logic lives here —
+ * all provider management, sequential execution, and deduplication happen
+ * inside SearchOrchestratorImpl.
  *
- * Flow:
- *   UI confirms intent
- *     → backend creates Hunt (via hunt-api.ts)
- *     → HuntService.search(hunt)           ← you are here
- *         → MockSearchProvider.search(hunt) (or real providers)
- *         → merge & deduplicate
- *     → SearchResult returned to UI
+ * Architecture:
  *
- * To add a real provider (e.g. TwoGISProvider):
- *   1. Create a class implementing SearchProvider.
- *   2. Append it to the providers[] array in the singleton at the bottom.
- *   3. Zero UI changes required.
+ *   Discover page
+ *    ↓ huntService.search(hunt)
+ *   HuntService          ← you are here (thin adapter)
+ *    ↓ orchestrator.search(hunt)
+ *   SearchOrchestratorImpl
+ *    ↓ (sequential, deduplicated)
+ *   ProviderRegistry → [MockSearchProvider, ...]
  *
- * Provider order matters for merge priority: results from providers[0]
- * win deduplication over providers[1], etc.
+ * To add a real provider, see search-orchestrator.ts — no changes needed here.
  */
 
-import type { SearchProvider } from './search-provider'
 import type { Hunt } from '../hunt/hunt-api'
 import type { SearchResult } from './types'
+import type { SearchOrchestrator } from './search-orchestrator'
+import { SearchOrchestratorImpl } from './search-orchestrator'
+import { ProviderRegistry } from './provider-registry'
 import { MockSearchProvider } from './mock-search-provider'
 
 export class HuntService {
-  constructor(private readonly providers: SearchProvider[]) {
-    if (providers.length === 0) {
-      throw new Error('HuntService requires at least one SearchProvider')
-    }
-  }
+  constructor(private readonly orchestrator: SearchOrchestrator) {}
 
-  async search(hunt: Hunt): Promise<SearchResult> {
-    // Run all providers in parallel — failure-tolerant: one provider crashing
-    // does not block results from the others.
-    const settlements = await Promise.allSettled(
-      this.providers.map((provider) => provider.search(hunt)),
-    )
-
-    // Log failures; collect successful results in provider order.
-    const successfulResults = settlements.flatMap((settlement, i) => {
-      if (settlement.status === 'rejected') {
-        console.error(
-          `[HuntService] Provider "${this.providers[i]!.name}" failed:`,
-          settlement.reason,
-        )
-        return []
-      }
-      return [settlement.value]
-    })
-
-    if (successfulResults.length === 0) {
-      throw new Error('All search providers failed. Please try again.')
-    }
-
-    // Merge and deduplicate by company id (first occurrence wins).
-    const seen = new Set<string>()
-    const companies = successfulResults
-      .flatMap((r) => r.companies)
-      .filter((company) => {
-        if (seen.has(company.id)) return false
-        seen.add(company.id)
-        return true
-      })
-
-    return {
-      companies,
-      totalFound: companies.length,
-      // Reconstruct SearchParams from Hunt for UI compatibility
-      query: {
-        rawQuery:         hunt.rawQuery,
-        industry:         hunt.intentJson.industry,
-        region:           hunt.intentJson.region,
-        companySize:      hunt.intentJson.companySize,
-        clarifyingAnswer: hunt.intentJson.clarifyingAnswer,
-      },
-    }
+  search(hunt: Hunt): Promise<SearchResult> {
+    return this.orchestrator.search(hunt)
   }
 }
 
-// ─── Default singleton ────────────────────────────────────────────────────────
+// ─── Provider registry ────────────────────────────────────────────────────────
 //
-// Add providers here as they become available:
-//   new TwoGISProvider()
-//   new HHProvider()
-//   new DadataProvider()
-//   new HunterProvider()
+// Register providers here. Order determines deduplication priority:
+// companies from earlier providers win over later ones.
 //
-export const huntService = new HuntService([new MockSearchProvider()])
+// To add a real provider when it's ready:
+//   import { TwoGISProvider } from './providers/two-gis-provider'
+//   providerRegistry.register(new TwoGISProvider())
+//
+export const providerRegistry = new ProviderRegistry()
+providerRegistry.register(new MockSearchProvider())
+
+// ─── Orchestrator singleton ───────────────────────────────────────────────────
+
+export const searchOrchestrator = new SearchOrchestratorImpl(providerRegistry)
+
+// ─── HuntService singleton ────────────────────────────────────────────────────
+//
+// Discover page imports this. Swapping the orchestrator here changes the
+// entire search strategy without touching the UI.
+//
+export const huntService = new HuntService(searchOrchestrator)

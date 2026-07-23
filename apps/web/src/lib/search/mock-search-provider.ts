@@ -2,15 +2,17 @@
  * MockSearchProvider — adapter that wraps MockSearchService.
  *
  * This is the only place in the codebase that imports mock-search-service.
- * Everything above this layer (HuntService, UI) is mock-agnostic.
+ * Everything above this layer (SearchOrchestratorImpl, HuntService, UI)
+ * is mock-agnostic.
  *
  * Receives a Hunt and extracts the SearchParams the mock service needs,
  * so the mock can filter results by industry / region just as before.
  *
  * To replace with a real provider:
- *   1. Create a class implementing SearchProvider.
- *   2. Swap it in the HuntService singleton (hunt-service.ts).
- *   3. This file can be deleted — no other code depends on it.
+ *   1. Create a class implementing SearchProvider (providerRegistry.ts).
+ *   2. Register it: providerRegistry.register(new RealProvider())
+ *   3. Remove MockSearchProvider from the registry when no longer needed.
+ *      No other files need to change.
  */
 
 import type { SearchProvider } from './search-provider'
@@ -19,12 +21,13 @@ import type { SearchResult } from './types'
 import { searchCompanies } from './mock-search-service'
 
 export class MockSearchProvider implements SearchProvider {
-  readonly name = 'mock'
+  readonly providerId = 'mock'
+  readonly providerName = 'Mock Search Provider'
 
   search(hunt: Hunt): Promise<SearchResult> {
     // Extract SearchParams from the Hunt for the internal mock service.
-    // Real providers would use hunt.rawQuery or hunt.intentJson directly
-    // to build their own API queries.
+    // Real providers would build their own API queries from hunt.rawQuery
+    // or hunt.intentJson directly.
     return searchCompanies({
       rawQuery:         hunt.rawQuery,
       industry:         hunt.intentJson.industry,

@@ -4,6 +4,7 @@ export const MOCK_COMPANIES: MockCompany[] = [
   // ── Строительство ───────────────────────────────────────────────────────────
   {
     id: 'c-001',
+    inn: '7701234567',
     name: 'СтройГрупп',
     industry: 'Строительство',
     region: 'Москва',
@@ -19,6 +20,7 @@ export const MOCK_COMPANIES: MockCompany[] = [
   },
   {
     id: 'c-002',
+    inn: '7702345678',
     name: 'МосПроект',
     industry: 'Строительство',
     region: 'Москва',
@@ -34,6 +36,7 @@ export const MOCK_COMPANIES: MockCompany[] = [
   },
   {
     id: 'c-003',
+    inn: '6603456789',
     name: 'ПромСтрой',
     industry: 'Строительство',
     region: 'Екатеринбург',
@@ -50,6 +53,7 @@ export const MOCK_COMPANIES: MockCompany[] = [
   // ── Логистика ───────────────────────────────────────────────────────────────
   {
     id: 'c-004',
+    inn: '6604567890',
     name: 'ТехноТранс',
     industry: 'Логистика и транспорт',
     region: 'Екатеринбург',
@@ -65,6 +69,7 @@ export const MOCK_COMPANIES: MockCompany[] = [
   },
   {
     id: 'c-005',
+    inn: '7705678901',
     name: 'РусЛогист',
     industry: 'Логистика и транспорт',
     region: 'Москва',
@@ -80,6 +85,7 @@ export const MOCK_COMPANIES: MockCompany[] = [
   },
   {
     id: 'c-006',
+    inn: '6606789012',
     name: 'УралЭкспресс',
     industry: 'Логистика и транспорт',
     region: 'Екатеринбург',
