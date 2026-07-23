@@ -1,6 +1,6 @@
 /**
  * Hunt API client — the only place in the frontend that knows how to
- * create and update Hunt records on the backend.
+ * create, update, and search Hunt records on the backend.
  *
  * A Hunt is the central entity of the Discover flow. Before any search
  * provider is invoked, a Hunt is created so that every search session
@@ -8,10 +8,17 @@
  *
  * Flow:
  *   user confirms intent
- *     → createHunt()         → returns Hunt with id
- *     → huntService.search(hunt)
- *     → updateHuntStatus(id, 'completed' | 'failed')
+ *     → createHunt()           → returns Hunt with id
+ *     → searchHunt(hunt.id)    → POST /api/v1/hunts/:id/search
+ *                                 backend runs all providers, dedup, ranking
+ *                                 returns SearchResult
+ *     → UI renders results
+ *
+ * The frontend never knows about providers, ProviderRegistry, or RankingEngine.
+ * All search business logic runs on the API server.
  */
+
+import type { SearchResult } from '@/lib/search/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,7 +56,7 @@ const BASE = '/api/v1/hunts'
 
 /**
  * Create a new Hunt in 'draft' status.
- * Must be called before any search provider is invoked.
+ * Must be called before searchHunt().
  */
 export async function createHunt(body: CreateHuntBody): Promise<Hunt> {
   const response = await fetch(BASE, {
@@ -70,8 +77,35 @@ export async function createHunt(body: CreateHuntBody): Promise<Hunt> {
 }
 
 /**
+ * Execute a search for a Hunt.
+ *
+ * Calls POST /api/v1/hunts/:id/search on the API server, which runs all
+ * registered SearchProviders, deduplicates, ranks, and returns SearchResult.
+ *
+ * The frontend never touches providers or ranking logic — it only renders
+ * the result that comes back from this call.
+ */
+export async function searchHunt(huntId: string): Promise<SearchResult> {
+  const response = await fetch(`${BASE}/${huntId}/search`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    const message = (data as { error?: { message?: string } })?.error?.message
+    throw new Error(message ?? `Search failed (${response.status})`)
+  }
+
+  const data = (await response.json()) as { data: SearchResult }
+  return data.data
+}
+
+/**
  * Advance a Hunt to a new status.
- * Call with 'searching' when the search starts, then 'completed' or 'failed'.
+ * Used for status transitions not managed by the search endpoint
+ * (e.g. 'confirmed' before search begins).
  */
 export async function updateHuntStatus(huntId: string, status: HuntStatus): Promise<Hunt> {
   const response = await fetch(`${BASE}/${huntId}/status`, {

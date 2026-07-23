@@ -1,58 +1,51 @@
 /**
  * HuntService (frontend) — thin bridge between the Discover page and
- * the SearchOrchestrator.
+ * the backend search API.
  *
- * The Discover page calls huntService.search(hunt); this class delegates
- * that call directly to the orchestrator. No provider logic lives here —
- * all provider management, sequential execution, and deduplication happen
- * inside SearchOrchestratorImpl.
+ * After the migration to server-side search, this file is now a minimal
+ * HTTP adapter. All search business logic (providers, deduplication,
+ * ranking) runs on the API server via POST /api/v1/hunts/:id/search.
  *
  * Architecture:
  *
  *   Discover page
  *    ↓ huntService.search(hunt)
- *   HuntService          ← you are here (thin adapter)
- *    ↓ orchestrator.search(hunt)
- *   SearchOrchestratorImpl
- *    ↓ (sequential, deduplicated)
- *   ProviderRegistry → [MockSearchProvider, ...]
+ *   HuntService (this file)           ← thin adapter only
+ *    ↓ POST /api/v1/hunts/:id/search
+ *   API server (apps/api)
+ *    ↓
+ *   SearchOrchestrator → Providers → Dedup → RankingEngine
+ *    ↓
+ *   SearchResult JSON
+ *    ↓
+ *   HuntService returns it to the Discover page
  *
- * To add a real provider, see search-orchestrator.ts — no changes needed here.
+ * The Discover page calls the same huntService.search(hunt) interface as before.
+ * No UI changes were required for this migration.
+ *
+ * Frontend no longer imports:
+ *   - SearchOrchestrator
+ *   - ProviderRegistry
+ *   - SearchProvider
+ *   - RankingEngine
+ *   - MockSearchProvider / TwoGISProvider
+ *   - Any mock data
  */
 
 import type { Hunt } from '../hunt/hunt-api'
 import type { SearchResult } from './types'
-import type { SearchOrchestrator } from './search-orchestrator'
-import { SearchOrchestratorImpl } from './search-orchestrator'
-import { ProviderRegistry } from './provider-registry'
-import { MockSearchProvider } from './mock-search-provider'
-import { TwoGISProvider } from './providers/two-gis'
+import { searchHunt } from '../hunt/hunt-api'
 
 export class HuntService {
-  constructor(private readonly orchestrator: SearchOrchestrator) {}
-
+  /**
+   * Execute a search for the given Hunt.
+   * Delegates to POST /api/v1/hunts/:id/search on the API server.
+   */
   search(hunt: Hunt): Promise<SearchResult> {
-    return this.orchestrator.search(hunt)
+    return searchHunt(hunt.id)
   }
 }
 
-// ─── Provider registry ────────────────────────────────────────────────────────
-//
-// Registration order = deduplication priority (first wins).
-// To add a real provider: import it and call providerRegistry.register().
-// Nothing else needs to change.
-//
-export const providerRegistry = new ProviderRegistry()
-providerRegistry.register(new MockSearchProvider())
-providerRegistry.register(new TwoGISProvider())   // MockTwoGISClient until useMock=false
+// ─── Singleton ────────────────────────────────────────────────────────────────
 
-// ─── Orchestrator singleton ───────────────────────────────────────────────────
-
-export const searchOrchestrator = new SearchOrchestratorImpl(providerRegistry)
-
-// ─── HuntService singleton ────────────────────────────────────────────────────
-//
-// Discover page imports this. Swapping the orchestrator here changes the
-// entire search strategy without touching the UI.
-//
-export const huntService = new HuntService(searchOrchestrator)
+export const huntService = new HuntService()

@@ -1,30 +1,37 @@
 /**
- * SearchProvider — contract that every data-source adapter must satisfy.
+ * SearchProvider — contract every data-source adapter must satisfy.
  *
- * Each provider receives the full Hunt object so it has access to both
- * the raw query and the structured intent fields. Providers are free to
- * implement their own query strategies — rule-based, API-driven, or AI-
- * assisted — as long as they return a SearchResult.
- *
- * Current implementations:
+ * Current implementations (apps/api/src/search/providers/):
  *   MockSearchProvider   — hardcoded mock data, used in development
+ *   TwoGISProvider       — 2GIS Catalog API (mock client by default)
  *
  * Future implementations (plug in without changing anything else):
- *   TwoGISProvider       — 2GIS API (companies by geo / category)
  *   HHProvider           — HH.ru API (companies hiring in a niche)
  *   DadataProvider       — Dadata / ЕГРЮЛ (company registry + enrichment)
  *   HunterProvider       — Hunter.io (email discovery)
  *
  * To add a new provider:
  *   1. Create a class that implements SearchProvider.
- *   2. Register it: providerRegistry.register(new MyProvider())
- *   3. Zero changes to SearchOrchestrator, HuntService, or UI required.
+ *   2. Register it in apps/api/src/search/setup.ts.
+ *   3. Zero changes to SearchOrchestrator, routes, or frontend required.
  */
 
-import type { Hunt } from '../hunt/hunt-api'
-import type { SearchResult } from './types'
+import type { SearchResult } from './types.js'
 
-export type { Hunt }
+/**
+ * Minimal Hunt surface that SearchProviders need.
+ * Does not depend on Drizzle schema types — providers are DB-agnostic.
+ */
+export interface SearchHunt {
+  id: string
+  rawQuery: string
+  intentJson: {
+    industry: string | null
+    region: string | null
+    companySize: string | null
+    clarifyingAnswer: string | null
+  }
+}
 
 export interface SearchProvider {
   /**
@@ -35,14 +42,13 @@ export interface SearchProvider {
 
   /**
    * Human-readable name shown in logs and debugging output.
-   * e.g. 'Mock Search Provider', '2GIS', 'HH.ru'
    */
   readonly providerName: string
 
   /**
    * Execute a search against this data source.
    * The Hunt contains both the raw query and the structured intent fields.
-   * SearchOrchestrator calls this and merges results across all providers.
+   * SearchOrchestratorImpl calls this and merges results across all providers.
    */
-  search(hunt: Hunt): Promise<SearchResult>
+  search(hunt: SearchHunt): Promise<SearchResult>
 }

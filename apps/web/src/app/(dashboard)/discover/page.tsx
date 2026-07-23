@@ -8,7 +8,7 @@ import { InteractiveIntentCard } from '@/components/discover/interactive-intent-
 import { SearchProgress } from '@/components/discover/search-progress'
 import { SearchResults } from '@/components/discover/search-results'
 import { huntService } from '@/lib/search/hunt-service'
-import { createHunt, updateHuntStatus } from '@/lib/hunt/hunt-api'
+import { createHunt } from '@/lib/hunt/hunt-api'
 import type { Hunt } from '@/lib/hunt/hunt-api'
 import type { ConfirmedIntent, ParsedIntent } from '@/lib/intent/types'
 import type { SearchResult } from '@/lib/search/types'
@@ -120,29 +120,14 @@ export default function DiscoverPage() {
         })
         activeHuntRef.current = hunt
 
-        // Step 2 — Advance to 'confirmed' (fire-and-forget; non-blocking).
-        updateHuntStatus(hunt.id, 'confirmed').catch((err: unknown) => {
-          console.warn('[DiscoverPage] Status update to confirmed failed:', err)
-        })
-
-        // Step 3 — Run search providers with the full Hunt object.
+        // Step 2 — Execute search on the API server.
+        // POST /api/v1/hunts/:id/search runs all providers, dedup, and ranking.
+        // The backend manages status transitions (searching → completed | failed).
         const data = await huntService.search(hunt)
         pendingResultRef.current = data
-
-        // Step 4 — Mark Hunt as completed.
-        updateHuntStatus(hunt.id, 'completed').catch((err: unknown) => {
-          console.warn('[DiscoverPage] Status update to completed failed:', err)
-        })
       } catch (err: unknown) {
-        console.error('[DiscoverPage] Hunt or search failed:', err)
+        console.error('[DiscoverPage] Hunt creation or search failed:', err)
         searchFailedRef.current = true
-
-        // Best-effort: mark Hunt as failed if we managed to create it.
-        if (hunt) {
-          updateHuntStatus(hunt.id, 'failed').catch((e: unknown) => {
-            console.warn('[DiscoverPage] Status update to failed failed:', e)
-          })
-        }
       }
     })()
   }

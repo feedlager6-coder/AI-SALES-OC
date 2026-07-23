@@ -4,21 +4,37 @@
  * POST   /api/v1/hunts            — create a new Hunt (draft)
  * GET    /api/v1/hunts/:id        — fetch a Hunt by ID
  * PATCH  /api/v1/hunts/:id/status — advance Hunt status
+ * POST   /api/v1/hunts/:id/search — execute search for a Hunt, return SearchResult
  *
- * All routes require an authenticated workspace session (via
- * workspaceContextPlugin). The workspaceId is taken from the session,
- * not from the request body, to prevent cross-workspace access.
+ * POST /api/v1/hunts/:id/search is the primary endpoint for the Discover flow.
+ * It runs all registered SearchProviders, deduplicates, ranks, and returns the
+ * result as JSON. The frontend never executes any search logic — it only
+ * renders the response.
  *
- * How to add a real search provider:
- *   1. Implement SearchProvider interface in apps/workers or a plugin.
- *   2. On PATCH status → 'confirmed', dispatch a BullMQ job with the huntId.
- *   3. The worker fetches the Hunt, runs the provider, and calls updateStatus.
+ * Architecture:
+ *
+ *   Frontend (Discover page)
+ *    ↓ POST /api/v1/hunts/:id/search
+ *   Route handler (this file)
+ *    ↓ searchOrchestrator.search(hunt)
+ *   SearchOrchestratorImpl
+ *    ↓ (sequential)
+ *   SearchProviders → Merge → Dedup → RankingEngine
+ *    ↓
+ *   SearchResult JSON → Frontend
+ *
+ * All providers, deduplication, and ranking run server-side.
+ * Frontend never imports providers, registry, or ranking engine.
  */
 
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { huntService } from '../services/hunt.service.js'
+import { searchOrchestrator } from '../search/setup.js'
 import { workspaceContextPlugin } from '../plugins/workspace-context.js'
+import { createLogger } from '@ai-sales-os/logger'
+
+const logger = createLogger({ name: 'api:hunts-route' })
 
 // ─── Validation schemas ───────────────────────────────────────────────────────
 
@@ -41,7 +57,6 @@ const UpdateStatusBodySchema = z.object({
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 export const huntsRoutes: FastifyPluginAsync = async (app) => {
-  // All Hunt routes require workspace context
   await app.register(workspaceContextPlugin)
 
   /**
@@ -88,7 +103,6 @@ export const huntsRoutes: FastifyPluginAsync = async (app) => {
   /**
    * PATCH /api/v1/hunts/:id/status
    * Advance a Hunt to the next status.
-   * Used by the frontend after initiating search, and by workers on completion.
    */
   app.patch('/:id/status', async (request, reply) => {
     const { id } = request.params as { id: string }
@@ -97,5 +111,86 @@ export const huntsRoutes: FastifyPluginAsync = async (app) => {
 
     const hunt = await huntService.updateStatus(id, workspaceId, status)
     return reply.status(200).send({ data: hunt })
+  })
+
+  /**
+   * POST /api/v1/hunts/:id/search
+   *
+   * Execute a full search for a Hunt and return ranked results.
+   *
+   * This is the server-side search entry point. All business logic lives here:
+   *   1. Fetch + verify Hunt ownership
+   *   2. Advance status to 'searching'
+   *   3. Run SearchOrchestrator (providers → merge → dedup → ranking)
+   *   4. Advance status to 'completed' (or 'failed' on error)
+   *   5. Return SearchResult
+   *
+   * The frontend receives plain JSON — it has no knowledge of providers,
+   * the registry, or ranking internals.
+   */
+  app.post('/:id/search', async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { workspaceId } = request
+
+    // ── Step 1: Fetch and verify ownership ──────────────────────────────────
+    const huntRow = await huntService.getHunt(id, workspaceId)
+    if (!huntRow) {
+      return reply.status(404).send({
+        error: { code: 'HUNT_NOT_FOUND', message: 'Hunt not found', statusCode: 404 },
+      })
+    }
+
+    // ── Step 2: Advance to 'searching' ──────────────────────────────────────
+    await huntService.updateStatus(id, workspaceId, 'searching')
+
+    // Build the SearchHunt from the DB row (intentJson is JSONB — cast safely)
+    const rawIntent = (huntRow.intentJson ?? {}) as Record<string, unknown>
+    const searchHunt = {
+      id:       huntRow.id,
+      rawQuery: huntRow.rawQuery,
+      intentJson: {
+        industry:         typeof rawIntent['industry']         === 'string' ? rawIntent['industry']         : null,
+        region:           typeof rawIntent['region']           === 'string' ? rawIntent['region']           : null,
+        companySize:      typeof rawIntent['companySize']      === 'string' ? rawIntent['companySize']      : null,
+        clarifyingAnswer: typeof rawIntent['clarifyingAnswer'] === 'string' ? rawIntent['clarifyingAnswer'] : null,
+      },
+    }
+
+    // ── Step 3: Run SearchOrchestrator ──────────────────────────────────────
+    try {
+      const result = await searchOrchestrator.search(searchHunt)
+
+      // ── Step 4a: Advance to 'completed' ────────────────────────────────
+      await huntService.updateStatus(id, workspaceId, 'completed')
+
+      logger.info({
+        event: 'hunt.search.completed',
+        huntId: id,
+        totalFound: result.totalFound,
+      })
+
+      return reply.status(200).send({ data: result })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+
+      logger.error({
+        event: 'hunt.search.failed',
+        huntId: id,
+        error: message,
+      })
+
+      // ── Step 4b: Advance to 'failed' ────────────────────────────────────
+      await huntService.updateStatus(id, workspaceId, 'failed').catch(() => {
+        // Best-effort — do not mask the original error
+      })
+
+      return reply.status(502).send({
+        error: {
+          code:       'SEARCH_FAILED',
+          message:    'Search failed — all providers returned errors.',
+          statusCode: 502,
+        },
+      })
+    }
   })
 }

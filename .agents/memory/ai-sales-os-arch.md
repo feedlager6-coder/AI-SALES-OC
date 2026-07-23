@@ -1,60 +1,90 @@
 ---
 name: AI Sales OS Architecture
-description: Key durable decisions, risks, and conventions for the AI Sales OS project
+description: Monorepo structure, key packages, plugin model, Replit gotchas, and search layer placement.
 ---
 
-## Core Entity Naming Rule
-The main entity is **Company** (not Lead/Prospect/Account). There is no `leads` table.
-"Lead" colloquially = Company in status before QUALIFIED.
+## Project structure
 
-**Why:** Multiple docs used inconsistent names causing confusion. Canonical source: `docs/domain_model.md`.
+```
+apps/web        — Next.js 15 frontend (port 5000)
+apps/api        — Fastify backend (port 3001)
+packages/
+  db            — Drizzle ORM + PostgreSQL + migrations
+  logger        — Pino logger (createLogger)
+  config        — Runtime env config
+  errors        — Shared error classes
+  types         — Cross-package TypeScript types
+  queue         — BullMQ task queue
+  plugins       — Fastify plugins
+```
 
-**How to apply:** Always use `companies`, `contacts`, `deals` in code. Never create a `leads` table.
+## Sprint 1.1 completion status (as of 2026-07-23)
 
-## Plugin Interface Requirement
-Every external provider (2GIS, Hunter, Mailgun, OpenAI, etc.) MUST implement a typed Plugin Interface from `packages/plugins/interfaces/`. Core never imports provider implementations directly.
+All search business logic now lives on the API server. Frontend is a thin renderer.
 
-**Why:** Enables adding new providers without touching core. Prevents vendor lock-in.
+### Search layer on API (`apps/api/src/search/`)
 
-**How to apply:** Before adding any external API call, check `docs/plugin_architecture.md`. Create interface → implement → register in `register-all.ts`.
+```
+types.ts                       — SearchCompany, SearchResult, SearchParams
+search-provider.ts             — SearchProvider interface + SearchHunt type
+provider-registry.ts           — ProviderRegistry (register/getAll)
+ranking-engine.ts              — RankingEngine interface + DefaultRankingEngine
+search-orchestrator.ts         — SearchOrchestratorImpl (merge + dedup + rank)
+setup.ts                       — Singleton wiring (registry + orchestrator)
+providers/mock/mock-data.ts    — 12 hardcoded Russian B2B companies
+providers/mock/mock.provider.ts— MockSearchProvider (400ms delay, filters by intent)
+providers/two-gis/             — 8 files: types, config, rate-limiter, retry-policy,
+                                  mock-fixtures, client, mapper, provider
+```
 
-## Race Condition: Email Daily Limit Counter
-The `sent_today` counter in `email_accounts` table MUST NOT be a plain SQL integer with concurrent workers. Use Redis INCR with EXPIRE at midnight.
+- `TWOGIS_API_KEY` (no NEXT_PUBLIC_ prefix) controls the 2GIS provider
+- `useMock: true` in config.ts — flip to false when real key is set
 
-**Why:** Two workers can both read `sent_today=49`, both check `<50`, both send, both increment → limit exceeded. See `docs/00-audit-report.md` RISK-001.
+### Search route (`apps/api/src/routes/hunts.ts`)
 
-**How to apply:** `REDIS.INCR(email_account:{id}:sent_today)` + `EXPIREAT` key to midnight.
+```
+POST /api/v1/hunts/:id/search
+  → fetch Hunt from DB (verify workspaceId)
+  → updateStatus(searching)
+  → searchOrchestrator.search(searchHunt)
+  → updateStatus(completed | failed)
+  → return { data: SearchResult }
+```
 
-## Multitenancy: Double Protection
-workspace_id check is REQUIRED at two levels: (1) application-level WHERE clause in every DB query, (2) PostgreSQL RLS policy. Both must be active.
+Backend owns all status transitions: searching → completed | failed.
 
-**Why:** Single-layer protection has failed in SaaS systems. Cross-tenant data leaks are critical security issues.
+### Frontend after migration (`apps/web/src/lib/search/`)
 
-## Soft Delete Required
-All business entities (Company, Contact, Deal, Campaign) use `deleted_at TIMESTAMPTZ NULL`. Hard DELETE is forbidden.
+Kept: `types.ts` (MockCompany, SearchResult for rendering), `hunt-service.ts` (thin adapter)
 
-**Why:** Preserves audit trail, prevents cascade data loss, needed for compliance.
+Deleted: search-orchestrator, provider-registry, search-provider, ranking-engine,
+         mock-search-provider, mock-search-service, mock-data, providers/ directory
 
-## Replit Runtime Setup
-No Docker/managed Redis service on Replit: `redis-server` is started inline by the API workflow's own shell command (installed as a nix system dependency), not as a separate workflow. Next.js proxies `/api/*` to the internal Fastify server via `rewrites()` in `next.config.ts`, with `NEXT_PUBLIC_API_URL=""` set only for the web workflow's command (not a shared env var, since the API's zod env schema requires a valid URL and rejects an empty string).
+`hunt-service.ts` is now a one-liner proxy:
+  `search(hunt) { return searchHunt(hunt.id) }`
 
-**Why:** The browser can't reach the Fastify origin directly across Replit's proxy the way it can the main webview port; same-origin proxying avoids cross-port CORS/cookie issues entirely.
+`hunt-api.ts` exports `searchHunt(huntId)` → POST /api/v1/hunts/:id/search.
 
-**How to apply:** Keep Redis off any external port mapping in `.replit` (unauthenticated by default). Replit's workflow port-detection (`waitForPort`) needs a matching `[[ports]]` entry to reliably detect a backend listener, even when that port isn't meant to be public — test removing/tightening a port mapping before assuming it's safe to drop.
+Discover page (`apps/web/src/app/(dashboard)/discover/page.tsx`):
+  - Removed all `updateHuntStatus` calls (backend owns status now)
+  - `huntService.search(hunt)` call signature is unchanged
+  - UI is pixel-identical
 
-## Better Auth + Drizzle Adapter Gotchas
-Two fixes were needed to make Better Auth's Drizzle adapter work with our schema: (1) `users` table needs an explicit `emailVerified` boolean column — Better Auth's adapter hard-requires it even though the docs don't call it out clearly. (2) Set `advanced.database.generateId: false` in `betterAuth()` options when your ID columns are `uuid` with a DB-side default (`gen_random_uuid()`) — otherwise Better Auth generates its own non-UUID string IDs and inserts fail.
+## Core architecture
 
-**How to apply:** Any new Better-Auth-backed entity table (if the pattern is reused) needs the same `emailVerified`-style required-field check against the adapter's expectations, and the same uuid/generateId setting.
+- **Plugin Architecture**: search providers registered in setup.ts; zero changes to routes/orchestrator to add new ones
+- **No frontend leakage**: API keys, providers, and ranking are 100% server-side
+- **Dedup keys**: INN → domain → id (first-provider-registered wins)
+- **Ranking**: rule-based DefaultRankingEngine (max 100 pts, 8 criteria), score stripped before API response
 
-## Architecture Audit Readiness Score
-Before audit: 42/100. After documentation round: 81/100. Remaining gaps documented in `docs/00-audit-report.md`.
+## Replit gotchas
 
-## Sprint 1.5 Status: Complete
-All P0 and P1 tasks shipped. Quality gates: typecheck 17/17, lint 9/9, build 10/10, tests 26/26.
+- **Package dist/ must exist** before API starts. Run `pnpm turbo run build --filter='./packages/*'` on fresh env. The `scripts/post-merge.sh` automates this.
+- **Port proxy**: frontend on 5000, API on 3001. Never use `localhost` in frontend code — use relative URLs.
+- **Entity is Company, not Lead** — the DB entity is `Company`; frontend calls them "компании".
 
-P0: ZodError→400 handler in `app.ts`; `/api/workspaces/stats` endpoint (4 parallel COUNT queries); dashboard client component with real data; auth rate-limit 15/min via `config.rateLimit` route option.
+## Better Auth wiring
 
-P1: AI email writer + reply classifier (OpenAI gpt-4o-mini + keyword/template fallback when key absent); campaign detail page with inline sequence step editor at `/campaigns/[id]`; sonner toasts in all mutation callbacks; companies import N+1 fixed with bulk `inArray` dedup + intra-batch Set tracking.
-
-**Why recorded:** Helps future-you know what Sprint 1.5 delivered so you don't re-implement or duplicate it in 1.6.
+- Auth lives in `apps/api/src/plugins/auth.ts`
+- Frontend uses `@/lib/auth-client` (Better Auth React client)
+- Trust origin: `BETTER_AUTH_URL=http://localhost:3001` (shared env)
