@@ -15,6 +15,9 @@ build/
 .env.test.local
 .env.production.local
 
+# Replit attached assets (pasted files, not part of source)
+attached_assets/
+
 # Logs
 *.log
 npm-debug.log*

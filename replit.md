@@ -34,7 +34,7 @@ cd apps/web && pnpm dev --port 5000
 cd apps/api && pnpm dev
 ```
 
-## Environment Status (configured 2026-07-13)
+## Environment Status (last verified 2026-07-23)
 
 - `DATABASE_URL` — ✅ Replit's built-in PostgreSQL (migrations applied)
 - `REDIS_URL` — ✅ `redis://localhost:6379`; a local `redis-server` is started by the "API Server" workflow itself (no separate Redis service on Replit)
