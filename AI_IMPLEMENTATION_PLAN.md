@@ -106,11 +106,11 @@ AI_IMPLEMENTATION_PLAN.md обновлен: ДА
 
 | Pass | Name | Status |
 |------|------|--------|
-| 1 | Type System + DB Schema | `[ ] NOT STARTED` |
-| 2 | Search Orchestration V4 | `[ ] NOT STARTED` |
-| 3 | Contact Discovery V4 | `[ ] NOT STARTED` |
-| 4 | Госзакупки + ФССП + LLM Intent | `[ ] NOT STARTED` |
-| 5 | AI Context Builder + Frontend V4 | `[ ] NOT STARTED` |
+| 1 | Type System + DB Schema | `✅ DONE` |
+| 2 | Search Orchestration V4 | `❌ NOT STARTED` |
+| 3 | Contact Discovery V4 | `❌ NOT STARTED` |
+| 4 | Госзакупки + ФССП + LLM Intent | `❌ NOT STARTED` |
+| 5 | AI Context Builder + Frontend V4 | `❌ NOT STARTED` |
 
 ---
 
@@ -132,8 +132,15 @@ AI_IMPLEMENTATION_PLAN.md обновлен: ДА
 
 ## Pass 1 — Type System + DB Schema
 
-**Status:** `[ ] NOT STARTED`
-**Completion note:** _(fill in when done)_
+**Status:** `✅ DONE — 2026-07-23`
+
+**Completion note:**
+- **Изменены:** `packages/db/src/schema/companies.ts` (+4 колонки: signals, contacts, fieldProvenance, aliases), `packages/db/src/schema/hunts.ts` (+2 колонки: searchPlanSummary, rejectionFeedback), `apps/api/src/search/types.ts` (полный V4 type system), `apps/api/src/search/providers/mock/mock-data.ts` (5 тегов `'contract'` → `'contract_won'`/`'contract_active'`), `packages/db/src/migrations/meta/_journal.json` (добавлена запись 0005)
+- **Создан:** `packages/db/src/migrations/0005_search_v4_types.sql`
+- **Реализовано:** Все V4 типы (`Signal`, `SignalType` с 14 вариантами, `ContactCandidate`, `FieldProvenance`, `RankedCompany`, `SearchPlan`, `SearchPlanSummary`, `SearchResultV4`, `CompanyBrief`, `RejectionFeedback`, `ParsedIntent`, `WorkspaceStatus`, константы `SIGNAL_WEIGHTS`, `SOURCE_CONFIDENCE`). Миграция `0005` применена к БД. Drizzle-типы `Company` и `Hunt` автоматически расширились через `$inferSelect`.
+- **Проблемы, решённые в процессе:** `SearchResult.companies` не менялся на `RankedCompany[]` — вместо этого добавлен `SearchResultV4`. Переход в Pass 2. Старый `'contract'` в mock-data заменён на `'contract_won'`/`'contract_active'`.
+- **Открытых проблем нет.**
+- **Следующий агент:** Начинай Pass 2. Зависимость выполнена. Используй `SearchResultV4` как возвращаемый тип оркестратора. `RankedCompany` — финальный тип результатов. `SearchCompany` и `SearchResult` оставь без изменений до окончания Pass 2.
 
 ### Goal
 Lay the foundation that every other pass depends on. Pure types and schema — no business logic.

@@ -29,7 +29,7 @@ export const MOCK_COMPANIES: SearchCompany[] = [
     contact: { name: 'Марина Соколова', role: 'Коммерческий директор', email: 'm.sokolova@mosprojekt.ru', phone: '+7 (495) 234-56-78' },
     signals: [
       { label: 'Быстро растут: +35% за год', type: 'growing' },
-      { label: 'Получили крупный госконтракт', type: 'contract' },
+      { label: 'Получили крупный госконтракт', type: 'contract_won' },
     ],
     website: 'mosprojekt.ru',
     foundedYear: 2018,
@@ -62,7 +62,7 @@ export const MOCK_COMPANIES: SearchCompany[] = [
     contact: { name: 'Иван Петров', role: 'Директор по продажам', email: 'ivan@technotrans.ru', phone: '+7 (343) 456-78-90' },
     signals: [
       { label: 'Расширяют маршрутную сеть', type: 'expanding' },
-      { label: 'Ищут корпоративных клиентов', type: 'contract' },
+      { label: 'Ищут корпоративных клиентов', type: 'contract_active' },
     ],
     website: 'technotrans.ru',
     foundedYear: 2014,
@@ -110,7 +110,7 @@ export const MOCK_COMPANIES: SearchCompany[] = [
     contact: { name: 'Алина Хасанова', role: 'Управляющий партнёр', email: 'a.khasanova@lawcenter-kzn.ru', phone: '+7 (843) 789-01-23' },
     signals: [
       { label: 'Открыли практику налогового права', type: 'expanding' },
-      { label: 'Ищут корпоративных клиентов', type: 'contract' },
+      { label: 'Ищут корпоративных клиентов', type: 'contract_active' },
     ],
     website: 'lawcenter-kzn.ru',
     foundedYear: 2015,
@@ -140,7 +140,7 @@ export const MOCK_COMPANIES: SearchCompany[] = [
     description: 'Разработка enterprise-решений на Java и Python. Работают с банками и страховыми.',
     contact: { name: 'Николай Фёдоров', role: 'CEO', email: 'n.fedorov@softlab.ru', phone: '+7 (812) 901-23-45' },
     signals: [
-      { label: 'Выиграли крупный тендер', type: 'contract' },
+      { label: 'Выиграли крупный тендер', type: 'contract_won' },
       { label: 'Набирают разработчиков', type: 'hiring' },
     ],
     website: 'softlab.ru',
@@ -173,7 +173,7 @@ export const MOCK_COMPANIES: SearchCompany[] = [
     description: 'Машиностроение и металлообработка. Поставки в горнодобывающую отрасль.',
     contact: { name: 'Виктор Попов', role: 'Директор по сбыту', email: 'v.popov@uralmashprom.ru', phone: '+7 (343) 123-45-60' },
     signals: [
-      { label: 'Выиграли госконтракт на 200 млн', type: 'contract' },
+      { label: 'Выиграли госконтракт на 200 млн', type: 'contract_won' },
       { label: 'Открыли новый цех', type: 'expanding' },
     ],
     website: 'uralmashprom.ru',

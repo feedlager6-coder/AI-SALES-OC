@@ -97,6 +97,19 @@ export const companies = pgTable(
     growthSignals: text('growth_signals').array().notNull().default(sql`'{}'`),
     aiSummary: text('ai_summary'),
 
+    // Search Engine V4 — structured signals (full domain model with dates/weights/confidence)
+    // Coexists with growthSignals (legacy text tags). signals is the V4 canonical store.
+    signals: jsonb('signals').notNull().default(sql`'[]'`),
+
+    // Search Engine V4 — denormalized contact candidates from Contact Discovery waterfall
+    contacts: jsonb('contacts').notNull().default(sql`'[]'`),
+
+    // Search Engine V4 — field-level provenance (which provider supplied each field)
+    fieldProvenance: jsonb('field_provenance').notNull().default(sql`'{}'`),
+
+    // Search Engine V4 — alternative names collected during dedup merges (ребрендинг etc.)
+    aliases: jsonb('aliases').notNull().default(sql`'[]'`),
+
     // Meta
     source: companySourceEnum('source').notNull().default('manual'),
     sourceId: varchar('source_id', { length: 500 }),

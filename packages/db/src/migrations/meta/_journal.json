@@ -36,6 +36,13 @@
       "when": 1753228800000,
       "tag": "0004_hunt_entity",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1753315200000,
+      "tag": "0005_search_v4_types",
+      "breakpoints": true
     }
   ]
 }

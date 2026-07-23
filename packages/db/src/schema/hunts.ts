@@ -58,6 +58,12 @@ export const hunts = pgTable(
 
     status: huntStatusEnum('status').notNull().default('draft'),
 
+    // Search Engine V4 — summary of which providers were queried and their outcome
+    searchPlanSummary: jsonb('search_plan_summary').default(sql`'{}'`),
+
+    // Search Engine V4 — per-company rejection feedback from the user (adjusts ICP weights)
+    rejectionFeedback: jsonb('rejection_feedback').notNull().default(sql`'[]'`),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
