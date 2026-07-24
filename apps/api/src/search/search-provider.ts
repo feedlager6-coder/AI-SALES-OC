@@ -16,11 +16,14 @@
  *   3. Zero changes to SearchOrchestrator, routes, or frontend required.
  */
 
-import type { SearchResult } from './types.js'
+import type { SearchResult, SignalType } from './types.js'
 
 /**
  * Minimal Hunt surface that SearchProviders need.
  * Does not depend on Drizzle schema types — providers are DB-agnostic.
+ *
+ * signals_wanted / exclude_signals are optional — parsed by LLM intent interpreter
+ * and passed through the pipeline so ICPScoreCalculator can apply boosts/penalties.
  */
 export interface SearchHunt {
   id: string
@@ -30,6 +33,10 @@ export interface SearchHunt {
     region: string | null
     companySize: string | null
     clarifyingAnswer: string | null
+    /** Signal types the user explicitly wants to see. Boosts ICP when matched. */
+    signals_wanted?: SignalType[]
+    /** Signal types the user wants to exclude. Penalises ICP when matched. */
+    exclude_signals?: SignalType[]
   }
 }
 

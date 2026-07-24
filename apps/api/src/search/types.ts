@@ -267,6 +267,15 @@ export interface SearchCompany {
   /** @deprecated Use signals (Signal[]) from RankedCompany instead. */
   signals: CompanySignal[]
   foundedYear?: number
+
+  /**
+   * @internal Stamped by SearchOrchestratorImpl immediately after a provider returns results.
+   * Equals the provider's `providerId` (e.g. '2gis', 'hhru', 'mock', 'dadata').
+   * Used by DedupEngine to apply correct field-merge priority (Dadata > 2GIS for legalName, etc.)
+   * and by CompanyPersister to record the originating source.
+   * Never serialised to the API response.
+   */
+  _providerId?: string
 }
 
 /**
@@ -465,12 +474,21 @@ export interface SearchResult {
 }
 
 /**
+ * Public-facing shape of a ranked company — score fields stripped before API response.
+ * icpScore / timingScore / finalScore are internal ordering aids and must never
+ * reach the client. This type enforces the contract at the type level.
+ */
+export type PublicRankedCompany = Omit<RankedCompany, 'icpScore' | 'timingScore' | 'finalScore'>
+
+/**
  * V4 shape returned by V4RankingEngine and the updated orchestrator (Pass 2).
  * RankedCompany extends SearchCompany, so read-side code that only accesses
  * SearchCompany fields continues to work without changes.
+ *
+ * companies contains PublicRankedCompany — score fields stripped.
  */
 export interface SearchResultV4 {
-  companies: RankedCompany[]
+  companies: PublicRankedCompany[]
   totalFound: number
   query: SearchParams
   plan: SearchPlanSummary

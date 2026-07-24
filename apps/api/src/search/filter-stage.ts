@@ -73,6 +73,14 @@ export class PreRankingFilter {
         }
       }
 
+      // Rule 4: Remove flagged potential duplicates
+      // DedupEngine marks these conservatively (Jaro-Winkler ≥ 0.88) when it cannot
+      // auto-merge. A better match already exists in the unique set, so remove this one.
+      if (company.potentialDuplicate) {
+        reasons['duplicate']++
+        return false
+      }
+
       return true
     })
 

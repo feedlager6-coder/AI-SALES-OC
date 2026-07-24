@@ -44,6 +44,11 @@ const ACTIVE_SIGNAL_TYPES = new Set([
   'growing',
 ])
 
+// Extra points awarded when the company has signals the user explicitly wants
+const SIGNALS_WANTED_BOOST = 10
+// Penalty applied when the company has signals the user explicitly excluded
+const EXCLUDE_SIGNALS_PENALTY = 15
+
 export class ICPScoreCalculator {
   calculate(company: MergedCompany, hunt: SearchHunt): number {
     const intent = hunt.intentJson
@@ -91,6 +96,23 @@ export class ICPScoreCalculator {
     for (const signal of company.signalsV4) {
       const penalty = PENALTIES[signal.type]
       if (penalty !== undefined) score -= penalty
+    }
+
+    // ── User-specified signal preferences ─────────────────────────────────────
+    // signals_wanted: boost when company has at least one desired signal type
+    const signalsWanted = intent.signals_wanted
+    if (signalsWanted && signalsWanted.length > 0) {
+      const companySignalTypes = new Set(company.signalsV4.map((s) => s.type))
+      const hasWanted = signalsWanted.some((t) => companySignalTypes.has(t))
+      if (hasWanted) score += SIGNALS_WANTED_BOOST
+    }
+
+    // exclude_signals: penalise when company has any signal type the user excluded
+    const excludeSignals = intent.exclude_signals
+    if (excludeSignals && excludeSignals.length > 0) {
+      const companySignalTypes = new Set(company.signalsV4.map((s) => s.type))
+      const hasExcluded = excludeSignals.some((t) => companySignalTypes.has(t))
+      if (hasExcluded) score -= EXCLUDE_SIGNALS_PENALTY
     }
 
     return Math.min(100, Math.max(0, score))

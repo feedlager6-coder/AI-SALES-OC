@@ -428,8 +428,17 @@ pnpm turbo run build --filter='./packages/*'
   - `apps/api/src/routes/hunts.ts` — добавлен `PATCH /:id/rejection-feedback` endpoint
   - `apps/api/src/application/discover/discover.application-service.ts` — обновлён на `SearchResultV4`, сохранение `searchPlanSummary` в hunt
 - **Реализовано:** Полный V4 pipeline. Redis кэш (tier1=6h, tier2=24h). Компании персистируются в БД после каждого поиска. Endpoint rejection-feedback атомарно дописывает в JSONB.
-- **Проблем нет.** TypeScript: 0 ошибок. Оба workflow запущены.
-- **Следующий агент:** Начинай Pass 3 (Contact Discovery V4). Зависимость выполнена: `RankedCompany` структура с `signalsV4`, `contacts`, `sources`, `aliases` полностью работает. `ContactDiscoveryService` должен заполнить `contacts: ContactCandidate[]` на top-10 компаниях синхронно и 11-50 через BullMQ job.
+
+**Audit & bug-fix (2026-07-24) — исправлено 6 дефектов:**
+1. `filter-stage.ts` — добавлено Rule 4: фильтр `potentialDuplicate` компаний (счётчик `reasons['duplicate']` был объявлен, но никогда не срабатывал).
+2. `dedup/dedup-engine.ts` — `inferSource()` теперь читает `_providerId` вместо эвристики по длине ИНН. `mergeInto()` применяет spec-приоритеты: `TRADE_NAME_PRIORITY`, `INN_PRIORITY`, отдельные таблицы для phone/website/email. Добавлен `shouldReplace()`.
+3. `search-provider.ts` + `icp-score.ts` + `discover.application-service.ts` — `signals_wanted`/`exclude_signals` добавлены в `SearchHunt.intentJson`, передаются через pipeline и применяются в `ICPScoreCalculator` (+10 / −15).
+4. `search-orchestrator.ts` — добавлен `stampProviderId()`: штампует `_providerId` на каждую компанию после вызова провайдера (включая cache hit). Убран `as RankedCompany[]` — возвращается `PublicRankedCompany[]`.
+5. `types.ts` — добавлен `_providerId?: string` на `SearchCompany`, `PublicRankedCompany` type alias, `SearchResultV4.companies: PublicRankedCompany[]`.
+6. `persistence/company-persister.ts` — `source` определяется из `_providerId`/provenance вместо хардкода `'2gis'`.
+
+**TypeScript: 0 ошибок. Оба workflow запущены.**
+- **Следующий агент:** Начинай Pass 3 (Contact Discovery V4). `RankedCompany` с `signalsV4`, `contacts`, `sources`, `aliases` полностью работает. `ContactDiscoveryService` заполняет `contacts: ContactCandidate[]` на top-10 синхронно, 11–50 через BullMQ. HH.ru подключить в Tier 1 при реализации `HhruStep`.
 
 ### Goal
 Implement the full pipeline for stages 1–9 of V4 spec: tiered discovery, Signal Engine, ICP/Timing scoring, V4 Ranking, dedup v2, CompanyRegistry, Redis cache, company persistence.

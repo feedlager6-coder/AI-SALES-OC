@@ -20,7 +20,7 @@ import { getDb, hunts } from '@ai-sales-os/db'
 import { createLogger } from '@ai-sales-os/logger'
 import type { HuntService } from '../../services/hunt.service.js'
 import type { SearchOrchestrator } from '../../search/search-orchestrator.js'
-import type { SearchResultV4 } from '../../search/types.js'
+import type { SearchResultV4, SignalType } from '../../search/types.js'
 
 const logger = createLogger({ name: 'application:discover' })
 
@@ -96,6 +96,17 @@ export class DiscoverApplicationService {
 
     // Сформировать SearchHunt из DB-строки
     const rawIntent = (huntRow.intentJson ?? {}) as Record<string, unknown>
+
+    // signals_wanted / exclude_signals — optional arrays stored in intentJson by the
+    // LLM intent interpreter. Validate shape before passing downstream.
+    const rawWanted  = rawIntent['signals_wanted']
+    const rawExclude = rawIntent['exclude_signals']
+    // Cast to SignalType[] — values were written by the LLM intent parser which uses
+    // the same SignalType union. Validated at runtime by the ICP calculator (unknown
+    // types simply produce no match).
+    const signalsWanted  = Array.isArray(rawWanted)  ? (rawWanted  as SignalType[]) : undefined
+    const excludeSignals = Array.isArray(rawExclude) ? (rawExclude as SignalType[]) : undefined
+
     const searchHunt = {
       id:       huntRow.id,
       rawQuery: huntRow.rawQuery,
@@ -104,6 +115,9 @@ export class DiscoverApplicationService {
         region:           typeof rawIntent['region']           === 'string' ? rawIntent['region']           : null,
         companySize:      typeof rawIntent['companySize']      === 'string' ? rawIntent['companySize']      : null,
         clarifyingAnswer: typeof rawIntent['clarifyingAnswer'] === 'string' ? rawIntent['clarifyingAnswer'] : null,
+        // Propagate user signal preferences so ICPScoreCalculator can apply boosts/penalties
+        ...(signalsWanted  && signalsWanted.length  > 0 ? { signals_wanted:  signalsWanted  } : {}),
+        ...(excludeSignals && excludeSignals.length > 0 ? { exclude_signals: excludeSignals } : {}),
       },
     }
 

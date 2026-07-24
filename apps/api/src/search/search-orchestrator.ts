@@ -21,7 +21,7 @@
 
 import { createHash } from 'node:crypto'
 import { createLogger } from '@ai-sales-os/logger'
-import type { SearchResultV4, SearchPlanSummary, SearchCompany, MergedCompany, RankedCompany } from './types.js'
+import type { SearchResultV4, SearchPlanSummary, SearchCompany, MergedCompany, RankedCompany, PublicRankedCompany } from './types.js'
 import type { ProviderRegistry } from './provider-registry.js'
 import type { SearchHunt } from './search-provider.js'
 import type { V4RankingEngine } from './v4-ranking-engine.js'
@@ -79,9 +79,16 @@ function buildCacheKey(providerId: string, hunt: SearchHunt): string {
 /**
  * Remove internal scoring fields before sending to the client.
  * icpScore, timingScore, finalScore are for ordering only — not shown in UI.
+ * Also strips _providerId which is an internal orchestration stamp.
  */
-export function toPublicCompany(company: RankedCompany): Omit<RankedCompany, 'icpScore' | 'timingScore' | 'finalScore'> {
-  const { icpScore: _icp, timingScore: _timing, finalScore: _final, ...rest } = company
+export function toPublicCompany(company: RankedCompany): PublicRankedCompany {
+  const {
+    icpScore:    _icp,
+    timingScore: _timing,
+    finalScore:  _final,
+    _providerId: _pid,
+    ...rest
+  } = company as RankedCompany & { _providerId?: string }
   return rest
 }
 
@@ -152,14 +159,15 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
             })
             const cachedResult = JSON.parse(cached) as SearchCompany[]
             providersSucceeded.push(providerId)
-            return cachedResult
+            // Re-stamp _providerId after JSON round-trip (it is not serialised to cache)
+            return this.stampProviderId(cachedResult, providerId)
           }
 
           // Cache miss — run provider and store result
           const result = await provider.search(hunt)
           await this.redis.set(cacheKey, JSON.stringify(result.companies), 'EX', ttl)
           providersSucceeded.push(providerId)
-          return result.companies
+          return this.stampProviderId(result.companies, providerId)
         } catch (err: unknown) {
           logger.warn({
             event: 'search.provider.cache_error',
@@ -181,7 +189,7 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
           returned:   result.companies.length,
         })
         providersSucceeded.push(providerId)
-        return result.companies
+        return this.stampProviderId(result.companies, providerId)
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         logger.error({ event: 'search.provider.error', providerId, huntId: hunt.id, error: message })
@@ -284,12 +292,13 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
       processingMs,
     })
 
-    // Strip internal scoring fields — icpScore/timingScore/finalScore are for
-    // ordering only and must NOT appear in the API JSON response.
+    // Strip internal fields (icpScore, timingScore, finalScore, _providerId)
+    // before sending to the client. toPublicCompany returns PublicRankedCompany
+    // which is the correct type for SearchResultV4.companies.
     const publicCompanies = rankedCompanies.map(toPublicCompany)
 
     return {
-      companies:  publicCompanies as RankedCompany[], // shape preserved; scores removed
+      companies:  publicCompanies,
       totalFound: publicCompanies.length,
       query: {
         rawQuery:         hunt.rawQuery,
@@ -300,5 +309,20 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
       },
       plan: summary,
     }
+  }
+
+  /**
+   * Stamp `_providerId` on every company returned by a provider.
+   * This must be done immediately after each provider call so DedupEngine
+   * can apply correct field-merge priorities (Dadata > 2GIS for legalName, etc.)
+   * and CompanyPersister can record the originating source accurately.
+   *
+   * `_providerId` is stripped from the public API response by `toPublicCompany`.
+   */
+  private stampProviderId(companies: SearchCompany[], providerId: string): SearchCompany[] {
+    for (const company of companies) {
+      company._providerId = providerId
+    }
+    return companies
   }
 }

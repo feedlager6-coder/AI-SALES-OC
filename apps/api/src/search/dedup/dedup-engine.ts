@@ -115,6 +115,31 @@ function normalizeName(name: string): string {
     .trim()
 }
 
+// ── Source priority tables (from spec field-merge strategy) ──────────────────
+//
+// Lower index = higher priority. merge helpers walk the list to pick the winner.
+//
+// Legal name priority is only applicable when providers expose a separate `legalName`
+// field (Dadata, Госзакупки). SearchCompany.name is the trade/display name — so we
+// only need TRADE_NAME_PRIORITY and INN_PRIORITY here for Pass 2.
+// LEGAL_NAME_PRIORITY will be used in Pass 4 when Dadata joins Tier 2.
+const TRADE_NAME_PRIORITY: readonly string[] = ['2gis', 'hhru', 'dadata', 'gosreg', 'mock']
+const INN_PRIORITY:        readonly string[] = ['dadata', 'gosreg', '2gis', 'hhru', 'mock']
+
+/** Returns true if `challenger` should win over `current` based on priority list. */
+function shouldReplace(
+  current:    string,
+  challenger: string,
+  priority:   readonly string[],
+): boolean {
+  const currentRank    = priority.indexOf(current)
+  const challengerRank = priority.indexOf(challenger)
+  // Unknown sources have lowest priority (treated as after the list)
+  const cRank = currentRank    === -1 ? priority.length : currentRank
+  const nRank = challengerRank === -1 ? priority.length : challengerRank
+  return nRank < cRank
+}
+
 // ── DedupEngine ───────────────────────────────────────────────────────────────
 
 export class DedupEngine {
@@ -200,12 +225,16 @@ export class DedupEngine {
 
         const similarity = jaroWinkler(name, candName)
         if (similarity >= DedupEngine.FUZZY_THRESHOLD) {
-          // Conservative: flag, don't merge
-          candidate.potentialDuplicate = true
+          // Conservative: do NOT auto-merge. The first-encountered company is the
+          // primary winner and stays untouched. Only the *incoming* challenger is
+          // flagged as a potential duplicate so PreRankingFilter can remove it.
+          // Marking the winner would cause both to be dropped by Rule 4, producing
+          // empty results instead of the correct single entry.
           logger.info({
             event:      'dedup.fuzzy_potential_duplicate',
-            company1:   candidate.name,
-            company2:   raw.name,
+            primaryId:  candidate.id,
+            primaryName: candidate.name,
+            challengerName: raw.name,
             similarity: Math.round(similarity * 100) / 100,
           })
           isFuzzyDuplicate = true
@@ -246,24 +275,24 @@ export class DedupEngine {
   }
 
   private initialProvenance(raw: SearchCompany): FieldProvenance {
-    // Determine source from provider data (heuristic for Pass 2)
     const provenance: FieldProvenance = {}
-
-    // We don't have a direct providerId on SearchCompany in base interface,
-    // but we can infer from field patterns
     const source = this.inferSource(raw)
-    if (raw.name)     provenance.tradeName  = source
-    if (raw.inn)      provenance.inn        = source
-    if (raw.website)  provenance.website    = source
-    if (raw.contact?.email) provenance.email = source
-    if (raw.contact?.phone) provenance.phone = source
-
+    if (raw.name)             provenance.tradeName  = source
+    if (raw.inn)              provenance.inn        = source
+    if (raw.website)          provenance.website    = source
+    if (raw.contact?.email)   provenance.email      = source
+    if (raw.contact?.phone)   provenance.phone      = source
     return provenance
   }
 
+  /**
+   * Determine the source identifier for a company.
+   * Uses `_providerId` stamped by SearchOrchestratorImpl after each provider call.
+   * Falls back to a heuristic only when `_providerId` is absent (legacy data).
+   */
   private inferSource(raw: SearchCompany): string {
-    // Heuristic: check if INN looks like dadata-enriched (10 or 12 digits)
-    if (raw.inn?.trim().length === 10 || raw.inn?.trim().length === 12) return 'dadata'
+    if (raw._providerId) return raw._providerId
+    // Legacy heuristic — remove once all call-sites stamp _providerId
     return '2gis'
   }
 
@@ -282,16 +311,43 @@ export class DedupEngine {
   }
 
   /**
-   * Merge `incoming` fields into `winner` using priority rules.
-   * Updates winner in place.
+   * Merge `incoming` fields into `winner` using spec-defined priority rules.
+   * Updates winner in-place. Uses `_providerId` (stamped by orchestrator) to
+   * determine which source wins each field per spec section 5.
+   *
+   * Merge priority:
+   *   Legal name  → gosreg > dadata > 2gis > hhru > mock
+   *   Trade name  → 2gis > hhru > dadata > gosreg > mock
+   *   INN         → dadata > gosreg > 2gis > hhru > mock
+   *   Phone       → 2gis > website > hhru > mock
+   *   Website     → 2gis > hhru > dadata > mock
+   *   Email       → website > hunter > pattern > generic
+   *   Size        → kontur > hhru > 2gis > mock
    */
   private mergeInto(winner: MergedCompany, incoming: SearchCompany): void {
+    const winnerSource   = winner.sources.tradeName ?? this.inferSource(winner)
     const incomingSource = this.inferSource(incoming)
 
-    // Track anomalous name conflict
-    if (winner.name !== incoming.name && incoming.name) {
+    // ── Trade name (display name): 2GIS wins ─────────────────────────────────
+    if (incoming.name && incoming.name !== winner.name) {
       if (!winner.aliases.includes(incoming.name)) {
         winner.aliases.push(incoming.name)
+      }
+      if (shouldReplace(winnerSource, incomingSource, TRADE_NAME_PRIORITY)) {
+        // incoming is a higher-priority source for trade name — swap
+        if (!winner.aliases.includes(winner.name)) {
+          winner.aliases.push(winner.name)
+        }
+        winner.name = incoming.name
+        winner.sources.tradeName = incomingSource
+        logger.info({
+          event:          'dedup.name_replaced',
+          winnerId:       winner.id,
+          oldName:        winner.aliases[winner.aliases.length - 1],
+          newName:        winner.name,
+          reason:         `${incomingSource} > ${winnerSource} for trade name`,
+        })
+      } else {
         logger.info({
           event:          'dedup.dedup_anomaly',
           winnerId:       winner.id,
@@ -302,52 +358,66 @@ export class DedupEngine {
       }
     }
 
-    // Phone: 2GIS > website > HH
-    if (!winner.contact?.phone && incoming.contact?.phone) {
-      if (!winner.contact) {
-        winner.contact = { ...incoming.contact }
-      } else {
-        winner.contact.phone = incoming.contact.phone
+    // ── INN: dadata > gosreg > 2gis ──────────────────────────────────────────
+    if (incoming.inn) {
+      const winnerInnSource = winner.sources.inn ?? winnerSource
+      if (!winner.inn || shouldReplace(winnerInnSource, incomingSource, INN_PRIORITY)) {
+        winner.inn = incoming.inn
+        winner.sources.inn = incomingSource
       }
-      winner.sources.phone = incomingSource
     }
 
-    // Website: winner keeps existing if present
-    if (!winner.website && incoming.website) {
-      winner.website = incoming.website
-      winner.sources.website = incomingSource
+    // ── Phone: 2GIS > website > HH ───────────────────────────────────────────
+    if (incoming.contact?.phone) {
+      const winnerPhoneSource = winner.sources.phone ?? winnerSource
+      const hasPhone = typeof winner.contact?.phone === 'string' && winner.contact.phone.trim().length > 0
+      if (!hasPhone || shouldReplace(winnerPhoneSource, incomingSource, ['2gis', 'website', 'hhru', 'mock'])) {
+        if (!winner.contact) {
+          winner.contact = { ...incoming.contact }
+        } else {
+          winner.contact.phone = incoming.contact.phone
+        }
+        winner.sources.phone = incomingSource
+      }
     }
 
-    // INN: prefer dadata (10-digit INN)
-    if (!winner.inn && incoming.inn) {
-      winner.inn = incoming.inn
-      winner.sources.inn = incomingSource
+    // ── Website: 2GIS > HH > dadata ──────────────────────────────────────────
+    if (incoming.website) {
+      const winnerWebSource = winner.sources.website ?? winnerSource
+      if (!winner.website || shouldReplace(winnerWebSource, incomingSource, ['2gis', 'hhru', 'dadata', 'mock'])) {
+        winner.website = incoming.website
+        winner.sources.website = incomingSource
+      }
     }
 
-    // Size
-    if (!winner.size && incoming.size) {
-      winner.size = incoming.size
+    // ── Email: website > hunter > pattern ────────────────────────────────────
+    if (incoming.contact?.email) {
+      const winnerEmailSource = winner.sources.email ?? winnerSource
+      const hasEmail = typeof winner.contact?.email === 'string' && winner.contact.email.trim().length > 0
+      if (!hasEmail || shouldReplace(winnerEmailSource, incomingSource, ['website', 'hunter', 'snov', 'pattern', '2gis', 'hhru', 'mock'])) {
+        if (!winner.contact) {
+          winner.contact = { ...incoming.contact }
+        } else {
+          winner.contact.email = incoming.contact.email
+        }
+        winner.sources.email = incomingSource
+      }
     }
 
-    // Description: prefer longer
-    if (
-      incoming.description &&
-      incoming.description.length > (winner.description?.length ?? 0)
-    ) {
+    // ── Size: kontur > hhru > 2gis ───────────────────────────────────────────
+    if (incoming.size && incoming.size.trim().length > 0) {
+      const hasSize = typeof winner.size === 'string' && winner.size.trim().length > 0
+      if (!hasSize) {
+        winner.size = incoming.size
+      }
+    }
+
+    // ── Description: prefer longer (best-effort) ─────────────────────────────
+    if (incoming.description && incoming.description.length > (winner.description?.length ?? 0)) {
       winner.description = incoming.description
     }
 
-    // Email: pick first non-empty
-    if (!winner.contact?.email && incoming.contact?.email) {
-      if (!winner.contact) {
-        winner.contact = { ...incoming.contact }
-      } else {
-        winner.contact.email = incoming.contact.email
-      }
-      winner.sources.email = incomingSource
-    }
-
-    // Merge legacy signals (V4 signals populated separately by SignalEngine)
+    // ── Legacy signals — merged by label dedup (V4 signals rebuilt by SignalEngine) ──
     if (Array.isArray(incoming.signals)) {
       const existingLabels = new Set(winner.signals.map((s) => s.label))
       for (const s of incoming.signals) {

@@ -85,12 +85,12 @@ export class CompanyPersister {
           await db
             .update(companies)
             .set({
-              signals:       signalsForDb,
-              contacts:      contactsForDb,
+              signals:         signalsForDb,
+              contacts:        contactsForDb,
               fieldProvenance: provenanceForDb,
-              aliases:       aliasesForDb,
-              icpScore:      Math.round(company.icpScore),
-              updatedAt:     new Date(),
+              aliases:         aliasesForDb,
+              icpScore:        Math.round(company.icpScore),
+              updatedAt:       new Date(),
             })
             .where(
               and(
@@ -99,7 +99,16 @@ export class CompanyPersister {
               ),
             )
         } else {
-          // Insert new company
+          // Insert new company.
+          // Determine the originating source from field provenance — the provider
+          // that contributed the trade name (primary display name) is the source.
+          // Only '2gis' and 'hhru' are valid DB enum values for search-sourced companies.
+          const rawSource = (company as typeof company & { _providerId?: string })._providerId
+            ?? company.sources?.tradeName
+            ?? company.sources?.inn
+            ?? '2gis'
+          const dbSource = rawSource === 'hhru' ? 'hhru' : '2gis'
+
           await db
             .insert(companies)
             .values({
@@ -115,7 +124,7 @@ export class CompanyPersister {
               contacts:        contactsForDb,
               fieldProvenance: provenanceForDb,
               aliases:         aliasesForDb,
-              source:          '2gis',
+              source:          dbSource,
               sourceId:        company.id,
               status:          'new',
             })
