@@ -7,11 +7,21 @@
  */
 import { Worker, type ConnectionOptions } from 'bullmq'
 import { and, eq, sql } from 'drizzle-orm'
-import { getDb, sequenceEnrollments, aiLogs, sequences, campaigns, emailSends } from '@ai-sales-os/db'
+import { getDb, sequenceEnrollments, aiLogs, sequences, campaigns, emailSends, workspaces } from '@ai-sales-os/db'
 import { createLogger } from '@ai-sales-os/logger'
 import { getRedisConnection, QUEUES, JOBS } from '@ai-sales-os/queue'
 import type { GenerateEmailPayload, ClassifyReplyPayload } from '@ai-sales-os/queue'
 import { generatePersonalisedEmail, classifyReplyText } from '../shared/ai-helpers.js'
+
+// ─── Sender profile type (matches workspace.settings.senderProfile) ───────────
+
+interface SenderProfile {
+  productDescription: string
+  targetRole: string
+  usp: string
+  tone?: string
+  previousWins?: string[]
+}
 
 const logger = createLogger({ name: 'workers:ai' })
 
@@ -64,11 +74,47 @@ export function startAiWorker() {
         const payload = job.data as GenerateEmailPayload
         logger.info({ event: 'ai.generate_start', enrollmentId: payload.enrollmentId })
 
+        // Load senderProfile from workspace.settings — does not block generation if absent
+        let senderProfile: SenderProfile | null = null
+        try {
+          const db = getDb()
+          const workspace = await db.query.workspaces.findFirst({
+            where: eq(workspaces.id, payload.workspaceId),
+            columns: { settings: true },
+          })
+          const settings = workspace?.settings as Record<string, unknown> | null | undefined
+          const rawProfile = settings?.senderProfile
+          if (
+            rawProfile &&
+            typeof rawProfile === 'object' &&
+            !Array.isArray(rawProfile) &&
+            typeof (rawProfile as Record<string, unknown>).productDescription === 'string'
+          ) {
+            const p = rawProfile as Record<string, unknown>
+            const profileBase: SenderProfile = {
+              productDescription: p.productDescription as string,
+              targetRole:         typeof p.targetRole === 'string' ? p.targetRole : '',
+              usp:                typeof p.usp === 'string' ? p.usp : '',
+              previousWins:       Array.isArray(p.previousWins) ? (p.previousWins as string[]) : [],
+            }
+            if (typeof p.tone === 'string') profileBase.tone = p.tone
+            senderProfile = profileBase
+          }
+        } catch (profileErr) {
+          // Non-fatal — proceed without sender profile
+          logger.warn({
+            event: 'ai.sender_profile_load_error',
+            workspaceId: payload.workspaceId,
+            error: profileErr instanceof Error ? profileErr.message : String(profileErr),
+          })
+        }
+
         const generated = await generatePersonalisedEmail(
           payload.companyId,
           payload.templateSubject,
           payload.templateBody,
           payload.enrollmentId,
+          senderProfile,
         )
 
         const db = getDb()

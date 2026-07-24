@@ -81,20 +81,32 @@ export interface GeneratedEmail {
   usedAI: boolean
 }
 
+// ─── Sender profile type ──────────────────────────────────────────────────────
+
+export interface SenderProfile {
+  productDescription: string
+  targetRole: string
+  usp: string
+  tone?: string
+  previousWins?: string[]
+}
+
 /**
  * Generate a personalised email for a given company using OpenAI.
  * Falls back to template variable substitution if no API key is available.
  *
- * @param companyId   - UUID of the target company
- * @param templateSubject - Raw subject template (may contain {{variables}})
- * @param templateBody    - Raw body template (may contain {{variables}})
- * @param enrollmentId    - For logging context only
+ * @param companyId        - UUID of the target company
+ * @param templateSubject  - Raw subject template (may contain {{variables}})
+ * @param templateBody     - Raw body template (may contain {{variables}})
+ * @param enrollmentId     - For logging context only
+ * @param senderProfile    - Optional sender profile loaded from workspace.settings
  */
 export async function generatePersonalisedEmail(
   companyId: string,
   templateSubject: string,
   templateBody: string,
   enrollmentId: string,
+  senderProfile?: SenderProfile | null,
 ): Promise<GeneratedEmail> {
   const ctx = await loadCompanyContext(companyId)
   const openai = getOpenAI()
@@ -111,6 +123,14 @@ export async function generatePersonalisedEmail(
     }
   }
 
+  // Build sender context block — included only if senderProfile is provided
+  const senderContextBlock = senderProfile
+    ? `\nКонтекст отправителя (наш продукт):
+- Продукт/услуга: ${senderProfile.productDescription}
+- Целевая роль получателя: ${senderProfile.targetRole}
+- Наше УТП: ${senderProfile.usp}${senderProfile.tone ? `\n- Тон письма: ${senderProfile.tone}` : ''}${senderProfile.previousWins?.length ? `\n- Примеры клиентов: ${senderProfile.previousWins.join(', ')}` : ''}`
+    : ''
+
   const systemPrompt = `Ты эксперт по B2B-продажам на российском рынке.
 Напиши персонализированное outreach-письмо на русском языке.
 Тон: профессиональный, конкретный, без клише вроде "мы рады предложить".
@@ -126,7 +146,7 @@ export async function generatePersonalisedEmail(
 - ИНН: ${ctx.inn || 'не указан'}
 - Сайт: ${ctx.website || 'не указан'}
 - Сотрудников: ${ctx.employees || 'неизвестно'}
-
+${senderContextBlock}
 Шаблон письма (персонализируй, сохраняя структуру):
 Тема: ${templateSubject}
 Тело: ${templateBody}

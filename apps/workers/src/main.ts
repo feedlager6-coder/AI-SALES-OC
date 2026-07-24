@@ -7,6 +7,7 @@ import { startEnrichmentWorker } from './enrichment/enrichment.worker.js'
 import { startEmailWorker } from './email/email.worker.js'
 import { startAiWorker } from './ai/ai.worker.js'
 import { startScrapingWorker } from './scraping/scraping.worker.js'
+import { startContactDiscoveryWorker } from './contact-discovery/contact-discovery.worker.js'
 
 const logger = createLogger({ name: 'workers:main' })
 
@@ -22,6 +23,7 @@ async function main() {
     startEmailWorker(),
     startAiWorker(),
     startScrapingWorker(),
+    startContactDiscoveryWorker(),
   ]
 
   logger.info({ event: 'workers.started', count: workers.length })

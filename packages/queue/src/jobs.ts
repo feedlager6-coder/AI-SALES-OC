@@ -11,6 +11,7 @@ export const QUEUES = {
   AI: 'ai-queue',
   SCRAPING: 'scraping-queue',
   NOTIFICATION: 'notification-queue',
+  CONTACT_DISCOVERY: 'contact-discovery-queue',
 } as const
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES]
@@ -39,6 +40,9 @@ export const JOBS = {
 
   // Notifications
   NOTIFY_SDR: 'notify_sdr',
+
+  // Contact Discovery (Pass 3)
+  DISCOVER_CONTACTS: 'discover_contacts',
 } as const
 
 export type JobName = (typeof JOBS)[keyof typeof JOBS]
@@ -135,6 +139,13 @@ export interface NotifySdrPayload {
   message: string
   urgency: 'low' | 'normal' | 'high' | 'urgent'
   actions?: Array<{ label: string; action: string; data?: string }>
+}
+
+export interface ContactDiscoveryPayload {
+  companyIds: string[]
+  huntId: string
+  workspaceId: string
+  verticalContext: string
 }
 
 // ─── Job ID Factory ───────────────────────────────────────────────────────────

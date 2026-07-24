@@ -21,6 +21,7 @@
 
 import { createHash } from 'node:crypto'
 import { createLogger } from '@ai-sales-os/logger'
+import { getContactDiscoveryQueue, JOBS, makeJobId } from '@ai-sales-os/queue'
 import type { SearchResultV4, SearchPlanSummary, SearchCompany, MergedCompany, RankedCompany, PublicRankedCompany } from './types.js'
 import type { ProviderRegistry } from './provider-registry.js'
 import type { SearchHunt } from './search-provider.js'
@@ -32,6 +33,7 @@ import { PreRankingFilter } from './filter-stage.js'
 import { DedupEngine } from './dedup/dedup-engine.js'
 import { CompanyRegistry } from './company-registry.js'
 import { CompanyPersister } from './persistence/company-persister.js'
+import { ContactDiscoveryService } from '../contact-discovery/contact-discovery.service.js'
 
 const logger = createLogger({ name: 'api:search-orchestrator' })
 
@@ -94,27 +96,37 @@ export function toPublicCompany(company: RankedCompany): PublicRankedCompany {
 
 // ─── Implementation ───────────────────────────────────────────────────────────
 
+// ─── Contact discovery config ─────────────────────────────────────────────────
+
+/** Top N companies processed synchronously (before HTTP response) */
+const CONTACT_DISCOVERY_SYNC_LIMIT = 10
+
+/** Vertical context fallback when hunt intent has no industry */
+const DEFAULT_VERTICAL_CONTEXT = 'general'
+
 export class SearchOrchestratorImpl implements SearchOrchestrator {
-  private readonly planBuilder:      SearchPlanBuilder
-  private readonly signalEngine:     SignalEngine
-  private readonly icpCalc:          ICPScoreCalculator
-  private readonly filter:           PreRankingFilter
-  private readonly dedupEngine:      DedupEngine
-  private readonly companyRegistry:  CompanyRegistry
-  private readonly companyPersister: CompanyPersister
+  private readonly planBuilder:           SearchPlanBuilder
+  private readonly signalEngine:          SignalEngine
+  private readonly icpCalc:              ICPScoreCalculator
+  private readonly filter:               PreRankingFilter
+  private readonly dedupEngine:          DedupEngine
+  private readonly companyRegistry:      CompanyRegistry
+  private readonly companyPersister:     CompanyPersister
+  private readonly contactDiscovery:     ContactDiscoveryService
 
   constructor(
     private readonly registry:        ProviderRegistry,
     private readonly rankingEngine:   V4RankingEngine,
     private readonly redis:           RedisClient | null = null,
   ) {
-    this.planBuilder      = new SearchPlanBuilder()
-    this.signalEngine     = new SignalEngine()
-    this.icpCalc          = new ICPScoreCalculator()
-    this.filter           = new PreRankingFilter()
-    this.dedupEngine      = new DedupEngine()
-    this.companyRegistry  = new CompanyRegistry()
-    this.companyPersister = new CompanyPersister()
+    this.planBuilder        = new SearchPlanBuilder()
+    this.signalEngine       = new SignalEngine()
+    this.icpCalc            = new ICPScoreCalculator()
+    this.filter             = new PreRankingFilter()
+    this.dedupEngine        = new DedupEngine()
+    this.companyRegistry    = new CompanyRegistry()
+    this.companyPersister   = new CompanyPersister()
+    this.contactDiscovery   = new ContactDiscoveryService()
   }
 
   async search(hunt: SearchHunt, workspaceId: string): Promise<SearchResultV4> {
@@ -247,6 +259,59 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
 
     // ── Steps 7–8: Rank ───────────────────────────────────────────────────────
     const rankedCompanies = this.rankingEngine.rankV4(filterResult.companies, hunt)
+
+    // ── Step 8.5: Contact Discovery — synchronous for top-10 ─────────────────
+    const verticalContext = hunt.intentJson.industry ?? DEFAULT_VERTICAL_CONTEXT
+    const top10 = rankedCompanies.slice(0, CONTACT_DISCOVERY_SYNC_LIMIT)
+    const rest  = rankedCompanies.slice(CONTACT_DISCOVERY_SYNC_LIMIT)
+
+    // Run discovery for top-10 in parallel — results attached before HTTP response
+    const top10ContactResults = await Promise.allSettled(
+      top10.map((company) =>
+        this.contactDiscovery.findForCompany(company, workspaceId, verticalContext),
+      ),
+    )
+
+    for (let i = 0; i < top10.length; i++) {
+      const result = top10ContactResults[i]
+      if (result.status === 'fulfilled' && result.value.length > 0) {
+        top10[i].contacts = result.value
+      }
+    }
+
+    // ── Step 8.6: Dispatch async CONTACT_DISCOVERY job for companies 11–50 ──
+    if (rest.length > 0) {
+      void (async () => {
+        try {
+          const queue = getContactDiscoveryQueue()
+          await queue.add(
+            JOBS.DISCOVER_CONTACTS,
+            {
+              companyIds:      rest.map((c) => c.id),
+              huntId:          hunt.id,
+              workspaceId,
+              verticalContext,
+            },
+            {
+              jobId: makeJobId(JOBS.DISCOVER_CONTACTS, hunt.id),
+              // Deduplicate: only one job per hunt
+            },
+          )
+          logger.info({
+            event:      'search.contact_discovery.dispatched',
+            huntId:     hunt.id,
+            companies:  rest.length,
+          })
+        } catch (err) {
+          // Non-fatal: log and continue — main response is not blocked
+          logger.warn({
+            event:  'search.contact_discovery.dispatch_error',
+            huntId: hunt.id,
+            error:  err instanceof Error ? err.message : String(err),
+          })
+        }
+      })()
+    }
 
     // ── Step 9: Workspace registry check ─────────────────────────────────────
     const presenceMap = await this.companyRegistry.checkPresence(
