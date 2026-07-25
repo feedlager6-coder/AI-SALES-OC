@@ -108,7 +108,11 @@ export class ContactDiscoveryService {
         genericResults = result
       }
 
-      const allCandidates = [...allSoFar, ...genericResults]
+      // Filter out candidates without a usable email (e.g. Dadata director-name-only
+      // entries where no email was generated). Only actionable contacts are ranked.
+      const allCandidates = [...allSoFar, ...genericResults].filter(
+        (c) => c.email.trim().length > 0,
+      )
 
       // ── Rank and return top 3 ─────────────────────────────────────────────
       const ranked = this.ranker.rank(allCandidates)

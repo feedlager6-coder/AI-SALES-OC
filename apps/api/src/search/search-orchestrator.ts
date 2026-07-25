@@ -280,6 +280,9 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
     }
 
     // ── Step 8.6: Dispatch async CONTACT_DISCOVERY job for companies 11–50 ──
+    // Payload uses stable business keys (inn, domain) rather than DB IDs because
+    // CompanyPersister.persist() is fire-and-forget and may not have written rows yet.
+    // A 15-second job delay gives the persister time to complete before the worker runs.
     if (rest.length > 0) {
       void (async () => {
         try {
@@ -287,7 +290,21 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
           await queue.add(
             JOBS.DISCOVER_CONTACTS,
             {
-              companyIds:      rest.map((c) => c.id),
+              companies: rest.map((c) => {
+                const rawDomain = c.website?.trim()
+                  .replace(/^https?:\/\//i, '')
+                  .replace(/^www\./i, '')
+                  .replace(/\/.*$/, '')
+                  .toLowerCase()
+                  .trim() || undefined
+                const normalizedInn = c.inn?.trim().replace(/\s+/g, '')
+                return {
+                  sourceId: c.id,
+                  name: c.name,
+                  ...(normalizedInn && /^\d{10,12}$/.test(normalizedInn) ? { inn: normalizedInn } : {}),
+                  ...(rawDomain ? { domain: rawDomain } : {}),
+                }
+              }),
               huntId:          hunt.id,
               workspaceId,
               verticalContext,
@@ -295,6 +312,8 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
             {
               jobId: makeJobId(JOBS.DISCOVER_CONTACTS, hunt.id),
               // Deduplicate: only one job per hunt
+              // 15-second delay gives CompanyPersister time to write rows before worker runs
+              delay: 15_000,
             },
           )
           logger.info({

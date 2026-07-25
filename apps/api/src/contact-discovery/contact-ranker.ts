@@ -95,7 +95,12 @@ export class ContactRanker {
   rank(candidates: ContactCandidate[]): ContactCandidate[] {
     if (candidates.length === 0) return []
 
-    const deduplicated = deduplicateByEmail(candidates)
+    // Defensively strip empty-email entries so they can never outrank usable contacts.
+    // Callers should filter before passing in, but this guards against regressions.
+    const actionable = candidates.filter((c) => c.email.trim().length > 0)
+    if (actionable.length === 0) return []
+
+    const deduplicated = deduplicateByEmail(actionable)
 
     return deduplicated
       .map((c) => ({

@@ -135,7 +135,7 @@ AI_IMPLEMENTATION_PLAN.md обновлен: ДА
 |------|------|--------|
 | 1 | Type System + DB Schema | `✅ DONE` |
 | 2 | Search Orchestration V4 | `✅ DONE` |
-| 3 | Contact Discovery V4 | `❌ NOT STARTED` |
+| 3 | Contact Discovery V4 | `✅ DONE` |
 | 4 | Госзакупки + ФССП + LLM Intent | `❌ NOT STARTED` |
 | 5 | AI Context Builder + Frontend V4 | `❌ NOT STARTED` |
 
@@ -595,8 +595,8 @@ Add `tier: 1 | 2 | 3` to provider registration metadata.
 
 ## Pass 3 — Contact Discovery V4
 
-**Status:** `[ ] NOT STARTED`
-**Completion note:** _(fill in when done)_
+**Status:** `✅ DONE`
+**Completion note:** Завершено 2026-07-25. Реализован полный 7-шаговый waterfall (`DadataStep`, `WebsiteStep`-stub, `HhruStep`, `HunterStep`, `SnovStep`, `PatternStep`, `GenericFallbackStep`) + `ContactRanker` (дедупликация по email, role-confidence override, top-3). `ContactDiscoveryService` — двухфазный запуск (free-steps параллельно, paid-APIs + pattern только если Phase 1 не дал verified≥80). `SearchOrchestrator` обогащает top-10 синхронно, 11–50 через BullMQ (`DISCOVER_CONTACTS`). `ContactDiscoveryPayload` использует `ContactDiscoveryCompanyRef[]` (inn+domain+name) вместо DB UUID — worker ищет по тем же ключам, что и `CompanyPersister` (inn → domain); job имеет 15-секундный delay, давая persister-у время записать строки перед обработкой. `startContactDiscoveryWorker` зарегистрирован в `apps/workers/src/main.ts`. `generatePersonalisedEmail()` принимает `senderProfile`; `ai.worker.ts` загружает его из `workspaces.settings.senderProfile`. Экспорты классов плагинов добавлены в `packages/plugins/src/index.ts`. Все три tsc-чека чисты (0 ошибок).
 
 ### Goal
 Implement `ContactDiscoveryService` with 7-step waterfall, `ContactRanker`, top-10 synchronous / 11–50 async via BullMQ. Wire `senderProfile` into `GENERATE_EMAIL` job.

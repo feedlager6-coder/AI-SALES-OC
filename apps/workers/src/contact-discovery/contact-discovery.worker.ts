@@ -9,7 +9,7 @@
  * synchronously in SearchOrchestratorImpl before the HTTP response is sent).
  */
 import { Worker, type ConnectionOptions } from 'bullmq'
-import { eq } from 'drizzle-orm'
+import { eq, and, isNull } from 'drizzle-orm'
 import { createLogger } from '@ai-sales-os/logger'
 import { getRedisConnection, QUEUES, JOBS } from '@ai-sales-os/queue'
 import type { ContactDiscoveryPayload } from '@ai-sales-os/queue'
@@ -243,41 +243,74 @@ export function startContactDiscoveryWorker() {
         return null
       }
 
-      const { companyIds, huntId, workspaceId } = job.data
+      const { companies: companyRefs, huntId, workspaceId } = job.data
       logger.info({
         event: 'contact_discovery.start',
         huntId,
         workspaceId,
-        count: companyIds.length,
+        count: companyRefs.length,
         jobId: job.id,
       })
 
       const db = getDb()
 
-      for (const companyId of companyIds) {
+      for (const ref of companyRefs) {
         try {
-          const company = await db.query.companies.findFirst({
-            where: eq(companies.id, companyId),
-            columns: {
-              id: true,
-              name: true,
-              inn: true,
-              website: true,
-              domain: true,
-            },
-          })
+          // Resolve DB row by inn → domain (same upsert key as CompanyPersister).
+          // We do NOT use ref.sourceId because that is a provider ID, not a DB UUID.
+          let dbId: string | null = null
 
-          if (!company) {
-            logger.warn({ event: 'contact_discovery.company_not_found', companyId })
+          if (ref.inn) {
+            const [row] = await db
+              .select({ id: companies.id })
+              .from(companies)
+              .where(
+                and(
+                  eq(companies.workspaceId, workspaceId),
+                  eq(companies.inn, ref.inn),
+                  isNull(companies.deletedAt),
+                ),
+              )
+              .limit(1)
+            dbId = row?.id ?? null
+          }
+
+          if (!dbId && ref.domain) {
+            const [row] = await db
+              .select({ id: companies.id })
+              .from(companies)
+              .where(
+                and(
+                  eq(companies.workspaceId, workspaceId),
+                  eq(companies.domain, ref.domain),
+                  isNull(companies.deletedAt),
+                ),
+              )
+              .limit(1)
+            dbId = row?.id ?? null
+          }
+
+          if (!dbId) {
+            // Company not yet persisted (very rare — persister should have run by now
+            // given the 15-second job delay). Log and skip; contacts will be discovered
+            // when the company is next enriched.
+            logger.warn({
+              event: 'contact_discovery.company_not_in_db',
+              sourceId: ref.sourceId,
+              name: ref.name,
+              inn: ref.inn,
+              domain: ref.domain,
+            })
             continue
           }
 
+          // Run discovery using payload data — no additional DB lookup needed
           const discovered = await discoverContacts(
             {
-              id: company.id,
-              name: company.name,
-              inn: company.inn ?? null,
-              website: company.website ?? company.domain ?? null,
+              id: ref.sourceId,
+              name: ref.name,
+              inn: ref.inn ?? null,
+              website: ref.domain ? `https://${ref.domain}` : null,
             },
             workspaceId,
           )
@@ -289,18 +322,25 @@ export function startContactDiscoveryWorker() {
                 contacts: discovered as unknown as (typeof companies.$inferSelect)['contacts'],
                 updatedAt: new Date(),
               })
-              .where(eq(companies.id, companyId))
+              .where(
+                and(
+                  eq(companies.id, dbId),
+                  eq(companies.workspaceId, workspaceId),
+                ),
+              )
 
             logger.info({
               event: 'contact_discovery.saved',
-              companyId,
+              dbId,
+              sourceId: ref.sourceId,
               contacts: discovered.length,
             })
           }
         } catch (err) {
           logger.error({
             event: 'contact_discovery.company_error',
-            companyId,
+            sourceId: ref.sourceId,
+            name: ref.name,
             error: err instanceof Error ? err.message : String(err),
           })
           // Continue with remaining companies
@@ -310,7 +350,7 @@ export function startContactDiscoveryWorker() {
       logger.info({
         event: 'contact_discovery.done',
         huntId,
-        processed: companyIds.length,
+        processed: companyRefs.length,
       })
 
       return null

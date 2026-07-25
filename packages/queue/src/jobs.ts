@@ -141,8 +141,24 @@ export interface NotifySdrPayload {
   actions?: Array<{ label: string; action: string; data?: string }>
 }
 
+/**
+ * Minimal company reference for async contact discovery.
+ * Uses stable business identifiers (inn, domain) rather than DB UUIDs
+ * because BullMQ jobs are dispatched before CompanyPersister writes to DB.
+ * The worker resolves the DB row by inn → domain (same key as CompanyPersister).
+ */
+export interface ContactDiscoveryCompanyRef {
+  /** Provider/source ID — used only for logging */
+  sourceId: string
+  name: string
+  /** INN (10 or 12 digits) — preferred lookup key */
+  inn?: string
+  /** Bare domain without protocol/www — fallback lookup key */
+  domain?: string
+}
+
 export interface ContactDiscoveryPayload {
-  companyIds: string[]
+  companies: ContactDiscoveryCompanyRef[]
   huntId: string
   workspaceId: string
   verticalContext: string
