@@ -15,6 +15,8 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "clean": "turbo run clean && rm -rf node_modules",
+    "start": "turbo run start --parallel --filter=@ai-sales-os/api --filter=@ai-sales-os/web",
+    "worker": "cd apps/workers && node dist/main.js",
     "db:generate": "turbo run db:generate --filter=@ai-sales-os/db",
     "db:migrate": "turbo run db:migrate --filter=@ai-sales-os/db",
     "db:studio": "turbo run db:studio --filter=@ai-sales-os/db",

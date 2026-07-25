@@ -1,0 +1,30 @@
+# Railway configuration for the Web (Next.js) service.
+# In Railway: create a service, set Root Directory to "/" (repo root).
+#
+# ⚠️  BLOCKING ISSUE before production deployment:
+#     next.config.ts rewrites /api/* → http://localhost:3001 (hardcoded).
+#     On Railway, API and Web run as separate services — localhost does not
+#     reach the API. Before going live:
+#       1. Add INTERNAL_API_URL env var pointing to the Railway API service
+#          internal URL (e.g. https://<api-service>.railway.internal or the
+#          public API URL if internal networking is not used).
+#       2. Update next.config.ts rewrites destination to:
+#              process.env.INTERNAL_API_URL ?? 'http://localhost:3001'
+#     See AI_IMPLEMENTATION_PLAN.md → Known Issues for full details.
+#
+# Required environment variables:
+#   NODE_ENV=production
+#   PORT (Railway sets this automatically — next start reads it)
+#   BETTER_AUTH_SECRET (must match API service)
+#   BETTER_AUTH_URL (public URL of the API service)
+#   INTERNAL_API_URL (internal Railway URL of the API service — see above)
+#   NEXT_PUBLIC_API_URL="" (keep empty — web uses relative /api/* rewrites)
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "pnpm install --frozen-lockfile && pnpm turbo run build --filter='./packages/*' && pnpm turbo run build --filter=@ai-sales-os/web"
+
+[deploy]
+startCommand = "node apps/web/.next/standalone/server.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

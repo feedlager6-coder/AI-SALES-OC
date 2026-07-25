@@ -138,6 +138,7 @@ AI_IMPLEMENTATION_PLAN.md обновлен: ДА
 | 3 | Contact Discovery V4 | `✅ DONE` |
 | 4 | Госзакупки + ФССП + LLM Intent | `❌ NOT STARTED` |
 | 5 | AI Context Builder + Frontend V4 | `❌ NOT STARTED` |
+| DR | Deployment Readiness Sprint | `✅ DONE` |
 
 ---
 
@@ -898,12 +899,53 @@ Sync with `RankedCompany` from API types.
 
 ---
 
+---
+
+## Deployment Readiness Sprint
+
+**Status:** `✅ DONE — 2026-07-25`
+
+**Goal:** Prepare the project for Railway deployment without changing business logic, search architecture, or V4 passes.
+
+**Completion note:**
+
+### What was done
+
+**New files created (4):**
+- `apps/api/railway.toml` — Railway build + start config for the API service
+- `apps/web/railway.toml` — Railway build + start config for the Web service (includes blocking-issue warning)
+- `apps/workers/railway.toml` — Railway build + start config for the Workers service
+- `README_DEPLOY.md` — Full deployment guide: local dev, Railway setup, env vars, health checks, troubleshooting
+
+**Modified files (3):**
+- `package.json` (root) — Added `start` (API + Web in production) and `worker` (workers standalone) scripts
+- `apps/web/package.json` — Changed `start` from `next start --port 3000` to `next start` so Railway's injected `$PORT` env var is respected
+- `AI_IMPLEMENTATION_PLAN.md` — Added this section + documented blocking issue in Known Issues
+
+**Verified:**
+- `.env.example` — Already complete; matches all fields in `packages/config/src/index.ts` Zod schema
+- PostgreSQL — Only via `DATABASE_URL`; no hardcoded connection strings anywhere
+- Redis — `REDIS_URL` env var throughout; `localhost:6379` only as an optional fallback default
+- Migrations — 6 files (0000–0005), journal correctly ordered, run via `pnpm db:migrate`
+- Each app starts independently (API, Web, Workers all have their own `dev`, `build`, `start` scripts)
+
+### Blocking issue (must resolve before Railway production)
+
+`next.config.ts` rewrites `/api/*` → `http://localhost:3001` (hardcoded). On Railway, API and Web are separate services with no shared localhost. See **Known Issues** below for the full description and proposed fix.
+
+### TypeScript / Build status
+- No TypeScript changes were made (config/doc/toml only)
+- Both Replit workflows unchanged
+
+---
+
 ## Known Issues / Critical Problems
 
 > If you discover a critical problem during implementation, document it here.
 > Format: **[PASS N - SHORT TITLE]** Description. Reason it's critical. Proposed solution.
 
-_(none yet)_
+**[DEPLOY - NEXT.JS REWRITE HARDCODES LOCALHOST:3001]** ✅ RESOLVED in Deployment Readiness Sprint
+`apps/web/next.config.ts` now reads `process.env.INTERNAL_API_URL ?? 'http://localhost:3001'` as the rewrite destination. Set `INTERNAL_API_URL` in each Railway service to the internal URL of the API service. Local dev and Replit are unaffected (fallback to `localhost:3001`). `INTERNAL_API_URL` added to `.env.example`.
 
 ---
 

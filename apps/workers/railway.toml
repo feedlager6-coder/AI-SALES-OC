@@ -1,0 +1,21 @@
+# Railway configuration for the Workers service (BullMQ background jobs).
+# In Railway: create a service, set Root Directory to "/" (repo root).
+# Workers do not expose any HTTP port — disable port detection in Railway UI.
+#
+# Required environment variables (set in Railway service settings):
+#   DATABASE_URL, REDIS_URL, BETTER_AUTH_SECRET, ENCRYPTION_KEY,
+#   NODE_ENV=production
+#
+# Optional (enable specific worker features):
+#   OPENAI_API_KEY, ANTHROPIC_API_KEY, MAILGUN_API_KEY, MAILGUN_DOMAIN,
+#   BREVO_API_KEY, HUNTER_API_KEY, SNOV_API_KEY, DADATA_API_KEY,
+#   TWOGIS_API_KEY, TELEGRAM_BOT_TOKEN
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "pnpm install --frozen-lockfile && pnpm turbo run build --filter='./packages/*' && pnpm turbo run build --filter=@ai-sales-os/workers"
+
+[deploy]
+startCommand = "node apps/workers/dist/main.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
