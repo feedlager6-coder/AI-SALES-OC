@@ -6,10 +6,13 @@
 #   PORT              — set automatically by Railway (next start reads it)
 #   BETTER_AUTH_SECRET — must match the API service value
 #   BETTER_AUTH_URL   — public URL of the API service (https://api.railway.app)
-#   INTERNAL_API_URL  — Railway-internal URL of the API service used for the
-#                        /api/* server-side rewrite. Use the Railway private
-#                        network URL (e.g. https://api.railway.internal) or the
-#                        public API URL. Defaults to http://localhost:3001 if unset.
+#   INTERNAL_API_URL  — ⚠️  MUST be set to the private-network URL of the API
+#                        service, e.g. http://ai-sales-osapi.railway.internal
+#                        DO NOT leave this empty (""). An empty string is NOT
+#                        the same as unset: "" bypasses the localhost fallback
+#                        (nullish-coalescing ?? treats "" as a value) and causes
+#                        new URL(path, "") to throw → every /api/* request 500s.
+#                        Setting it to the public API URL also works as a fallback.
 #   NEXT_PUBLIC_API_URL — leave empty ("") — web uses relative /api/* rewrites
 #
 # ─── Standalone output structure ──────────────────────────────────────────────

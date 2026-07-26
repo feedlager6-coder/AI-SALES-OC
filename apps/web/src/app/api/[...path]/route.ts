@@ -20,7 +20,14 @@ import type { NextRequest } from 'next/server'
 // Read at module load time — but module is loaded on first request in the
 // running container (runtime), so process.env reflects the current environment,
 // not the build environment.
-const API_BASE = (process.env.INTERNAL_API_URL ?? 'http://localhost:3001').replace(/\/$/, '')
+//
+// IMPORTANT: Use `||` not `??` here.  The Railway web service must have
+// INTERNAL_API_URL set to the private-network URL of the API service
+// (e.g. http://api-service-name.railway.internal).  If someone sets it to
+// an empty string ("") by mistake — which `??` would pass through, causing
+// `new URL(path, "")` to throw an unhandled TypeError → 500 — `||` treats
+// the empty string as falsy and uses the local default instead.
+const API_BASE = (process.env.INTERNAL_API_URL || 'http://localhost:3001').replace(/\/$/, '')
 
 // Headers that must not be forwarded between server-side hops.
 const HOP_BY_HOP = new Set([
@@ -41,7 +48,16 @@ async function proxyToApi(
   const { path } = await context.params
 
   // Build the target URL, preserving the query string.
-  const targetUrl = new URL(`/api/${path.join('/')}`, API_BASE)
+  let targetUrl: URL
+  try {
+    targetUrl = new URL(`/api/${path.join('/')}`, API_BASE)
+  } catch {
+    console.error('[api-proxy] INTERNAL_API_URL is invalid or empty:', JSON.stringify(API_BASE))
+    return new Response(
+      JSON.stringify({ error: { code: 'API_MISCONFIGURED', message: 'API base URL is not configured correctly on this server', statusCode: 502 } }),
+      { status: 502, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
   request.nextUrl.searchParams.forEach((value, key) => {
     targetUrl.searchParams.append(key, value)
   })
