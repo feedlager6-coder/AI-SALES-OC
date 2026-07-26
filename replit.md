@@ -34,14 +34,18 @@ cd apps/web && pnpm dev --port 5000
 cd apps/api && pnpm dev
 ```
 
-## Environment Status (last verified 2026-07-23)
+## Environment Status (last verified 2026-07-26)
 
-- `DATABASE_URL` — ✅ Replit's built-in PostgreSQL (migrations applied)
+- `DATABASE_URL` — ✅ Replit's built-in PostgreSQL; migrations now run automatically at API startup
 - `REDIS_URL` — ✅ `redis://localhost:6379`; a local `redis-server` is started by the "API Server" workflow itself (no separate Redis service on Replit)
 - `BETTER_AUTH_SECRET` / `ENCRYPTION_KEY` — ✅ generated and stored as shared env vars
 - `BETTER_AUTH_URL` — ✅ `http://localhost:3001` (internal; browser never calls the API origin directly, see below)
 - `SESSION_SECRET` — ✅ already configured
 - Optional external API keys (`OPENAI_API_KEY`, `MAILGUN_API_KEY`, `TWOGIS_API_KEY`, etc.) are still unset — add via Replit Secrets when those integrations are built.
+
+### Database migrations — startup auto-migration
+
+The API runs `drizzle-orm`'s `migrate()` on every boot. Already-applied migrations are skipped (tracked in `drizzle.__drizzle_migrations`). No manual `db:migrate` step needed on fresh environments. SQL files are bundled into `apps/api/dist/migrations/` by the build script.
 
 ### Replit networking note
 
