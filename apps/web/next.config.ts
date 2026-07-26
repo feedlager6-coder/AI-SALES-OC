@@ -1,3 +1,4 @@
+import path from 'path'
 import type { NextConfig } from 'next'
 
 // Replit's iframe proxy serves the app from a dynamic *.replit.dev domain,
@@ -22,6 +23,11 @@ const nextConfig: NextConfig = {
   // Standalone output bundles only the files needed to run the server —
   // required for Railway and Docker deployments.
   output: 'standalone',
+  // In a pnpm monorepo, Next.js file-tracing must start from the repo root so
+  // that workspace package files (packages/*) are included in the standalone
+  // bundle. Without this, imports of @ai-sales-os/* packages fail at runtime.
+  // Resulting server.js path: .next/standalone/apps/web/server.js
+  outputFileTracingRoot: path.join(__dirname, '../../'),
   images: {
     domains: [],
   },

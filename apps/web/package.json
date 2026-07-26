@@ -6,6 +6,7 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
+    "copy:standalone": "cp -r .next/static .next/standalone/apps/web/.next/static",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "clean": "rm -rf .next"

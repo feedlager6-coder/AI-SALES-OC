@@ -122,7 +122,7 @@ Create **three services** from the same repository root:
 | Service name | Root dir | Build command | Start command |
 |---|---|---|---|
 | `api` | `/` | see `apps/api/railway.toml` | `node apps/api/dist/server.js` |
-| `web` | `/` | see `apps/web/railway.toml` | `node apps/web/.next/standalone/server.js` |
+| `web` | `/` | see `apps/web/railway.toml` | `HOSTNAME=0.0.0.0 node apps/web/.next/standalone/apps/web/server.js` |
 | `workers` | `/` | see `apps/workers/railway.toml` | `node apps/workers/dist/main.js` |
 
 Each service reads its Railway config from the corresponding `railway.toml` file.

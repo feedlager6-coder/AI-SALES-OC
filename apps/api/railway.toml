@@ -1,19 +1,31 @@
 # Railway configuration for the API service.
-# In Railway: create a service, set Root Directory to "/" (repo root),
-# and point it at this config by placing this file in the repo root
-# OR set the service's build/start commands manually in the Railway UI.
+# In Railway: create a service, set Root Directory to "/" (repo root).
 #
-# Required environment variables (set in Railway service settings):
-#   DATABASE_URL, REDIS_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL,
-#   ENCRYPTION_KEY, NODE_ENV=production, PORT (Railway sets this automatically)
+# ─── Required environment variables ───────────────────────────────────────────
+#   DATABASE_URL      — PostgreSQL 16 connection string (postgres://...)
+#   REDIS_URL         — Redis 7 connection string (redis://...)
+#   BETTER_AUTH_SECRET — Auth signing secret, ≥32 chars  (openssl rand -hex 32)
+#   BETTER_AUTH_URL   — Public URL of this API service   (https://api.railway.app)
+#   ENCRYPTION_KEY    — 64 hex chars / 32 bytes AES-256  (openssl rand -hex 32)
+#   NODE_ENV          — set to "production"
+#   PORT              — set automatically by Railway
 #
-# Optional: OPENAI_API_KEY, TWOGIS_API_KEY, HUNTER_API_KEY, SNOV_API_KEY,
-#           DADATA_API_KEY, MAILGUN_API_KEY, MAILGUN_DOMAIN, BREVO_API_KEY,
-#           TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY
+# ─── Optional environment variables ───────────────────────────────────────────
+#   OPENAI_API_KEY, ANTHROPIC_API_KEY  — AI providers
+#   MAILGUN_API_KEY, MAILGUN_DOMAIN    — email sending via Mailgun
+#   BREVO_API_KEY                      — email sending via Brevo
+#   TWOGIS_API_KEY                     — 2GIS company search
+#   HUNTER_API_KEY, SNOV_API_KEY       — email discovery
+#   DADATA_API_KEY                     — Russian company registry enrichment
+#   TELEGRAM_BOT_TOKEN                 — Telegram notifications
+#   MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_BUCKET, MINIO_USE_SSL
 
 [build]
 builder = "NIXPACKS"
-buildCommand = "pnpm install --frozen-lockfile && pnpm turbo run build --filter='./packages/*' && pnpm turbo run build --filter=@ai-sales-os/api"
+# Single turbo call with "..." suffix: builds @ai-sales-os/api AND all of its
+# workspace dependencies in the correct order (honoring dependsOn: ["^build"]).
+# Avoids --frozen-lockfile which fails on Railway when optional deps differ by OS.
+buildCommand = "pnpm install && pnpm turbo run build --filter=@ai-sales-os/api..."
 
 [deploy]
 startCommand = "node apps/api/dist/server.js"

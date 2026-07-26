@@ -139,6 +139,7 @@ AI_IMPLEMENTATION_PLAN.md обновлен: ДА
 | 4 | Госзакупки + ФССП + LLM Intent | `❌ NOT STARTED` |
 | 5 | AI Context Builder + Frontend V4 | `❌ NOT STARTED` |
 | DR | Deployment Readiness Sprint | `✅ DONE` |
+| DF | Deployment Fix Sprint | `✅ DONE` |
 
 ---
 
@@ -898,6 +899,48 @@ Sync with `RankedCompany` from API types.
 - Workspace status badge shows `new` / `contacted` / `in_pipeline` / `closed`
 
 ---
+
+---
+
+## Deployment Fix Sprint
+
+**Status:** `✅ DONE — 2026-07-25`
+
+**Goal:** Fix all Railway deployment failures without changing business logic or search architecture.
+
+**Root causes resolved:**
+
+1. **API/Workers — `Cannot find module '@ai-sales-os/*'`**
+   - `pnpm install --frozen-lockfile` fails on Railway due to optional-dependency differences between Linux distros
+   - Turbo filter `'./packages/*'` with shell glob is unreliable in Railway's build runner
+   - **Fix:** Changed all three `railway.toml` buildCommands to `pnpm install && pnpm turbo run build --filter=@ai-sales-os/<app>...`. The `...` suffix builds the app and all workspace dependencies in the correct order via Turbo's `dependsOn: ["^build"]` graph.
+
+2. **Web — `standalone/server.js` not found**
+   - Path mismatch: with `outputFileTracingRoot` pointing to the monorepo root, Next.js places `server.js` at `.next/standalone/apps/web/server.js` (not `.next/standalone/server.js`)
+   - Static CSS/JS assets (`.next/static/`) were not copied into the standalone bundle
+   - `HOSTNAME` defaulted to `localhost`, blocking Railway's proxy
+   - **Fix:** Added explicit `outputFileTracingRoot: path.join(__dirname, '../../')` to `next.config.ts`. Added `copy:standalone` script to `apps/web/package.json`. Corrected start command to `HOSTNAME=0.0.0.0 node apps/web/.next/standalone/apps/web/server.js`.
+
+3. **Web — build fails with `<Html>` error during static page generation**
+   - `NODE_ENV` was non-standard in the build environment. Next.js warned "You are using a non-standard NODE_ENV value" and failed during `Generating static pages`.
+   - **Fix:** Added `NODE_ENV=production` explicitly to the web service buildCommand.
+
+4. **Workers — missing ENV variables**
+   - `getEnv()` validates `DATABASE_URL`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY` (no defaults). Must be set in Railway service environment.
+   - **Fix:** Documented all required and optional variables clearly in `apps/workers/railway.toml`. Validation is correct and was not weakened.
+
+**Modified files (5):**
+- `apps/web/next.config.ts` — Added `outputFileTracingRoot`, added `path` import
+- `apps/web/package.json` — Added `copy:standalone` script
+- `apps/api/railway.toml` — Fixed buildCommand (remove `--frozen-lockfile`, use `--filter=@ai-sales-os/api...`)
+- `apps/web/railway.toml` — Fixed buildCommand (`NODE_ENV=production`, copy:standalone), fixed startCommand path, `HOSTNAME=0.0.0.0`, removed stale blocking-issue comment
+- `apps/workers/railway.toml` — Fixed buildCommand (remove `--frozen-lockfile`, use `--filter=@ai-sales-os/workers...`)
+
+**Validation:**
+- TypeScript: 17/17 tasks successful, 0 errors
+- Build: API ✅ Workers ✅ Web (NODE_ENV=production) ✅
+- Standalone output: `apps/web/.next/standalone/apps/web/server.js` ✅
+- Static files copied: `apps/web/.next/standalone/apps/web/.next/static/` ✅
 
 ---
 
