@@ -40,4 +40,6 @@ restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
 [[deploy.healthcheckPath]]
-path = "/api/health"
+# /health/live — basic liveness (always 200 if server is up)
+# /health/ready — checks DB + Redis connectivity (200 when ready, 503 otherwise)
+path = "/health/live"

@@ -22,7 +22,7 @@ builder = "NIXPACKS"
 # NODE_ENV=production is required — Next.js build fails with non-standard NODE_ENV.
 # "..." suffix: builds @ai-sales-os/web AND all workspace dependencies in order.
 # Static assets are copied into the standalone bundle after the Next.js build.
-buildCommand = "pnpm install && NODE_ENV=production pnpm turbo run build --filter=@ai-sales-os/web... && cd apps/web && pnpm copy:standalone"
+buildCommand = "pnpm install && NEXT_PUBLIC_API_URL=\"\" NODE_ENV=production pnpm turbo run build --filter=@ai-sales-os/web... && cd apps/web && pnpm copy:standalone"
 
 [deploy]
 # HOSTNAME=0.0.0.0 binds on all interfaces (required for Railway's proxy).

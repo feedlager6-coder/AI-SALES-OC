@@ -9,12 +9,6 @@ const replitDevOrigins = [
   ...(process.env.REPLIT_DOMAINS?.split(',') ?? []),
 ].filter((origin): origin is string => Boolean(origin))
 
-// Internal URL of the Fastify API server.
-// On Replit/local dev: http://localhost:3001
-// On Railway: set INTERNAL_API_URL to the Railway-internal URL of the API service
-//             (e.g. https://<api-service>.railway.internal or the public API URL)
-const internalApiUrl = process.env.INTERNAL_API_URL ?? 'http://localhost:3001'
-
 const nextConfig: NextConfig = {
   // Allow requests from the Replit preview proxy host and local IP (screenshot tooling)
   allowedDevOrigins:
@@ -33,17 +27,16 @@ const nextConfig: NextConfig = {
   },
   // Transpile workspace packages
   transpilePackages: ['@ai-sales-os/types'],
-  // Proxy /api/* to the Fastify server so the browser talks to one same-origin
-  // host and avoids cross-port CORS/cookie issues. The destination is
-  // configurable via INTERNAL_API_URL for production multi-service deployments.
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${internalApiUrl}/api/:path*`,
-      },
-    ]
-  },
+  // NOTE: /api/* proxying is handled by apps/web/src/app/api/[...path]/route.ts
+  // (a Next.js Route Handler), NOT by next.config.ts rewrites().
+  //
+  // rewrites() destinations are evaluated at BUILD time and baked into the
+  // routes manifest. If INTERNAL_API_URL is not set during the Railway build
+  // the destination would be http://localhost:3001 — which doesn't exist in
+  // the web container — causing every auth and API request to time out.
+  //
+  // The Route Handler reads process.env.INTERNAL_API_URL at REQUEST time, so
+  // it always uses the correct runtime value without any build-time coupling.
 }
 
 export default nextConfig
