@@ -91,7 +91,7 @@ async function proxyToApi(
     upstreamResponse = await fetch(targetUrl.toString(), {
       method: request.method,
       headers: forwardHeaders,
-      body: body && body.byteLength > 0 ? body : undefined,
+      body: body && body.byteLength > 0 ? body : null,
       // Pass redirects through to the browser rather than following them.
       redirect: 'manual',
     })
