@@ -8,6 +8,10 @@ build/
 .next/
 .turbo/
 
+# Railway pnpm deploy output (generated during Railway build, not source)
+apps/api/production/
+apps/workers/production/
+
 # Environment
 .env
 .env.local

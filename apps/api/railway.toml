@@ -22,13 +22,19 @@
 
 [build]
 builder = "NIXPACKS"
-# Single turbo call with "..." suffix: builds @ai-sales-os/api AND all of its
-# workspace dependencies in the correct order (honoring dependsOn: ["^build"]).
-# Avoids --frozen-lockfile which fails on Railway when optional deps differ by OS.
-buildCommand = "pnpm install && pnpm turbo run build --filter=@ai-sales-os/api..."
+# Build order:
+#   1. pnpm install          — create workspace symlinks (no --frozen-lockfile:
+#                              Railway Linux differs in optional deps)
+#   2. turbo build (api...)  — compile packages/* then apps/api in dependency order
+#   3. pnpm deploy --legacy  — materialize workspace packages as REAL FILES
+#                              (not symlinks) into apps/api/production/node_modules.
+#                              Fixes "Cannot find module '@ai-sales-os/*'" at runtime
+#                              caused by pnpm symlinks being unresolvable after
+#                              Railway's post-build layer finalisation.
+buildCommand = "pnpm install && pnpm turbo run build --filter=@ai-sales-os/api... && pnpm --filter=@ai-sales-os/api deploy --legacy --prod apps/api/production"
 
 [deploy]
-startCommand = "node apps/api/dist/server.js"
+startCommand = "node apps/api/production/dist/server.js"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
