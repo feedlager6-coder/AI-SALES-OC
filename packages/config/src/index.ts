@@ -52,6 +52,10 @@ const envSchema = z.object({
     .transform((v) => v === 'true')
     .default('false'),
 
+  // Web service public URL (used by API for CORS and trustedOrigins in production).
+  // Set to the Railway public URL of the Web service, e.g. https://web.railway.app
+  WEB_URL: z.string().url().optional(),
+
   // Frontend
   NEXT_PUBLIC_API_URL: z.string().url().default('http://localhost:3001'),
 })

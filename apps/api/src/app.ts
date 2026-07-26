@@ -45,8 +45,14 @@ export async function buildApp() {
   })
 
   await app.register(cors, {
+    // In production: allow requests from the web frontend (WEB_URL) and the API
+    // itself (BETTER_AUTH_URL). WEB_URL must be set in Railway API service env vars.
+    // In development: allow all origins.
     origin: env.NODE_ENV === 'production'
-      ? [env.BETTER_AUTH_URL]
+      ? [
+          env.BETTER_AUTH_URL,
+          ...(env.WEB_URL ? [env.WEB_URL] : []),
+        ]
       : true,
     credentials: true,
   })

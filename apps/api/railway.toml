@@ -7,6 +7,7 @@
 #   BETTER_AUTH_SECRET — Auth signing secret, ≥32 chars  (openssl rand -hex 32)
 #   BETTER_AUTH_URL   — Public URL of this API service   (https://api.railway.app)
 #   ENCRYPTION_KEY    — 64 hex chars / 32 bytes AES-256  (openssl rand -hex 32)
+#   WEB_URL           — public URL of the Web service  (https://web.railway.app)
 #   NODE_ENV          — set to "production"
 #   PORT              — set automatically by Railway
 #
@@ -31,7 +32,7 @@ builder = "NIXPACKS"
 #                              Fixes "Cannot find module '@ai-sales-os/*'" at runtime
 #                              caused by pnpm symlinks being unresolvable after
 #                              Railway's post-build layer finalisation.
-buildCommand = "pnpm install && pnpm turbo run build --filter=@ai-sales-os/api... && pnpm --filter=@ai-sales-os/api deploy --legacy --prod apps/api/production"
+buildCommand = "pnpm install && pnpm turbo run build --filter=@ai-sales-os/api... && pnpm --filter=@ai-sales-os/db db:migrate && pnpm --filter=@ai-sales-os/api deploy --legacy --prod apps/api/production"
 
 [deploy]
 startCommand = "node apps/api/production/dist/server.js"

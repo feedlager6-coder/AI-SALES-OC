@@ -77,7 +77,7 @@ export function getAuth(): AuthInstance {
         role: {
           type: 'string',
           required: false,
-          defaultValue: 'member',
+          defaultValue: 'sdr', // must be a valid user_role enum value; hook overrides to 'owner' on sign-up
           fieldName: 'role',
         },
         // Passed from the register form so the first workspace gets a meaningful name
@@ -91,6 +91,8 @@ export function getAuth(): AuthInstance {
     },
     trustedOrigins: [
       env.BETTER_AUTH_URL,
+      // Production web frontend URL — must be set in Railway API service env as WEB_URL
+      ...(env.WEB_URL ? [env.WEB_URL] : []),
       // Trust local dev origins (including 127.0.0.1 for dev tooling / screenshot browsers)
       'http://localhost:3000',
       'http://localhost:3001',
