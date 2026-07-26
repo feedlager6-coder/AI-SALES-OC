@@ -1,10 +1,13 @@
 import { createAuthClient } from 'better-auth/react'
 
 export const authClient = createAuthClient({
-  // Empty string → relative URLs → Next.js rewrites /api/* → localhost:3001.
-  // Must use ?? (not ||) so an empty NEXT_PUBLIC_API_URL stays empty and
-  // requests stay same-origin through the Next.js proxy.
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? '',
+  // Always use relative URLs so auth requests go through Next.js rewrite proxy
+  // (/api/:path* → INTERNAL_API_URL/api/:path*).  This guarantees the session
+  // cookie is set on the web domain — not the API domain — so Next.js middleware
+  // can read it.  If baseURL were set to NEXT_PUBLIC_API_URL (the API's public
+  // URL), the browser would receive a cookie scoped to the API domain and
+  // middleware would never see it, silently breaking login in production.
+  baseURL: '',
 })
 
 // Re-export named helpers with explicit types to avoid non-portable inferred types

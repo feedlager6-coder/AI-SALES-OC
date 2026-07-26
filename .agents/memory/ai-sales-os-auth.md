@@ -37,3 +37,10 @@ Run `cd packages/db && pnpm db:migrate` after import. All packages must be built
 
 ## REPLIT_DEV_DOMAIN in trustedOrigins
 `process.env.REPLIT_DEV_DOMAIN` is auto-injected by Replit into all processes. Include it dynamically in trustedOrigins so the Replit preview proxy domain is always trusted regardless of session.
+
+## Auth client baseURL MUST be empty string (relative URLs)
+`apps/web/src/lib/auth-client.ts` must use `baseURL: ''` — never `process.env.NEXT_PUBLIC_API_URL`. If baseURL points to the external API URL (different domain), the session cookie is set on the API domain and Next.js middleware can never see it, silently breaking all logins in production while the API call itself succeeds.
+
+**Why:** Better Auth sets the session cookie on whichever domain handles the HTTP response. When the auth client hits the API directly (cross-origin), the cookie domain is the API's domain. When it goes through the Next.js rewrite proxy (`/api/:path*` → `INTERNAL_API_URL/api/:path*`), the cookie domain is the web domain — which is what middleware reads.
+
+**How to apply:** Keep `baseURL: ''` in auth-client.ts always. The Next.js rewrite in `next.config.ts` handles routing to the correct API backend. `NEXT_PUBLIC_API_URL` can still be used for non-auth API calls (search, hunts, etc.) that don't set cookies.

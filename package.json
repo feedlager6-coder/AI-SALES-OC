@@ -32,6 +32,7 @@
   "pnpm": {
     "overrides": {
       "ioredis": "5.11.1"
-    }
+    },
+    "onlyBuiltDependencies": ["esbuild", "sharp", "msgpackr-extract"]
   }
 }
