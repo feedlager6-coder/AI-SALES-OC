@@ -16,7 +16,6 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSession, signOut } from '@/lib/auth-client'
-import { useVipSession } from '@/components/vip-session-provider'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
@@ -48,37 +47,20 @@ export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
 
-  // Real Better Auth session (requires API + DB)
   const { data: session } = useSession()
-  // VIP session (no DB needed — from httpOnly cookie via /api/vip-login)
-  const vipUser = useVipSession()
-
-  // Merge: real session takes priority; VIP is the fallback.
-  // Typed loosely so both Better Auth's user shape and the VIP mock satisfy it.
-  const user =
-    (session?.user as { name?: string | null | undefined; email?: string | null | undefined } | undefined)
-    ?? (vipUser ? { name: vipUser.name as string | null | undefined, email: vipUser.email as string | null | undefined } : null)
-  const isVip = !session?.user && !!vipUser
+  const user = session?.user as { name?: string | null; email?: string | null } | undefined
 
   const { data: workspaceData } = useQuery({
     queryKey: ['workspace-me'],
     queryFn: () => api.workspace.me(),
     staleTime: 5 * 60 * 1000,
-    // Only fetch when we have a real session — VIP users get a static workspace name
     enabled: !!session?.user,
   })
-  const workspaceName = workspaceData?.data?.name ?? (isVip ? vipUser?.workspaceName : 'Рабочее пространство')
+  const workspaceName = workspaceData?.data?.name ?? 'Рабочее пространство'
 
   async function handleSignOut() {
-    if (isVip) {
-      // VIP logout: clear the cookie via DELETE /api/vip-login
-      await fetch('/api/vip-login', { method: 'DELETE', credentials: 'include' })
-      router.push('/login')
-      router.refresh()
-    } else {
-      await signOut()
-      router.push('/login')
-    }
+    await signOut()
+    router.push('/login')
   }
 
   return (

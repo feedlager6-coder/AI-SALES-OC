@@ -13,7 +13,12 @@ const nextConfig: NextConfig = {
   // Allow requests from the Replit preview proxy host and local IP (screenshot tooling)
   allowedDevOrigins:
     replitDevOrigins.length > 0 ? [...replitDevOrigins, '127.0.0.1'] : ['*'],
-  serverExternalPackages: [],
+  // postgres uses native bindings — must not be bundled by webpack
+  serverExternalPackages: ['postgres'],
+  // Transpile workspace packages so Next.js can process their source/ESM correctly.
+  // @ai-sales-os/types  — source-only, no dist/
+  // @ai-sales-os/db     — pre-compiled ESM; listed so webpack resolves it cleanly
+  transpilePackages: ['@ai-sales-os/types', '@ai-sales-os/db'],
   // Standalone output bundles only the files needed to run the server —
   // required for Railway and Docker deployments.
   output: 'standalone',
@@ -25,8 +30,6 @@ const nextConfig: NextConfig = {
   images: {
     domains: [],
   },
-  // Transpile workspace packages
-  transpilePackages: ['@ai-sales-os/types'],
   // NOTE: /api/* proxying is handled by apps/web/src/app/api/[...path]/route.ts
   // (a Next.js Route Handler), NOT by next.config.ts rewrites().
   //

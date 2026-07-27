@@ -111,6 +111,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@ai-sales-os/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@ai-sales-os/types':
         specifier: workspace:*
         version: link:../../packages/types

@@ -8,7 +8,6 @@ import { getEnv } from '@ai-sales-os/config'
 import { createLogger } from '@ai-sales-os/logger'
 import { isAppError } from '@ai-sales-os/errors'
 import { healthRoutes } from './routes/health.js'
-import { authRoutes } from './routes/auth.js'
 import { workspaceRoutes } from './routes/workspace.js'
 import { companiesRoutes } from './routes/companies.js'
 import { contactsRoutes } from './routes/contacts.js'
@@ -45,12 +44,10 @@ export async function buildApp() {
   })
 
   await app.register(cors, {
-    // In production: allow requests from the web frontend (WEB_URL) and the API
-    // itself (BETTER_AUTH_URL). WEB_URL must be set in Railway API service env vars.
+    // In production: allow requests from the web frontend (WEB_URL).
     // In development: allow all origins.
     origin: env.NODE_ENV === 'production'
       ? [
-          env.BETTER_AUTH_URL,
           ...(env.WEB_URL ? [env.WEB_URL] : []),
         ]
       : true,
@@ -61,7 +58,6 @@ export async function buildApp() {
     global: true,
     max: 200,
     timeWindow: '1 minute',
-    // Per-route overrides are set via route `config.rateLimit`
     errorResponseBuilder: (_request, context) => ({
       error: {
         code: 'RATE_LIMITED',
@@ -137,7 +133,6 @@ export async function buildApp() {
   // ─── Routes ────────────────────────────────────────────────────────────────
 
   await app.register(healthRoutes, { prefix: '/health' })
-  await app.register(authRoutes, { prefix: '/api/auth' })
   await app.register(workspaceRoutes, { prefix: '/api/workspaces' })
   await app.register(companiesRoutes, { prefix: '/api/companies' })
   await app.register(contactsRoutes, { prefix: '/api/contacts' })

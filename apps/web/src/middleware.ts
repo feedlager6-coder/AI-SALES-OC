@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { VIP_COOKIE_NAME, VIP_TOKEN } from '@/lib/vip-session'
 
-const PUBLIC_PATHS = ['/login', '/register', '/api/auth', '/api/vip-login', '/dev-preview']
+const PUBLIC_PATHS = ['/login', '/register', '/api/auth', '/dev-preview']
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -20,13 +19,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // VIP session — hardcoded dev account, no DB required
-  const vipToken = request.cookies.get(VIP_COOKIE_NAME)?.value
-  if (vipToken === VIP_TOKEN) {
-    return NextResponse.next()
-  }
-
-  // Real Better Auth session cookie
+  // Better Auth session cookie (dev: plain name; prod: __Secure- prefix)
   const sessionToken =
     request.cookies.get('better-auth.session_token')?.value ??
     request.cookies.get('__Secure-better-auth.session_token')?.value
