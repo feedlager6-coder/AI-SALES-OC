@@ -1,0 +1,12 @@
+node_modules/
+.pnpm-store/
+dist/
+build/
+.next/
+.turbo/
+apps/api/production/
+apps/workers/production/
+attached_assets/
+*.log
+.git/
+.cache/
