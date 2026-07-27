@@ -12,9 +12,19 @@
  * Next.js App Router (more specific path wins), so auth requests never
  * reach the Fastify proxy — eliminating INTERNAL_API_URL as a failure point
  * for authentication.
+ *
+ * getAuth() is called inside the handler (request time) rather than at module
+ * load time so the build succeeds even when DATABASE_URL is absent from the
+ * build environment.
  */
 
-import { auth } from '@/lib/auth'
+import { getAuth } from '@/lib/auth'
 import { toNextJsHandler } from 'better-auth/next-js'
+import type { NextRequest } from 'next/server'
 
-export const { GET, POST } = toNextJsHandler(auth)
+async function authHandler(request: NextRequest) {
+  const { GET, POST } = toNextJsHandler(getAuth())
+  return request.method === 'GET' ? GET(request) : POST(request)
+}
+
+export { authHandler as GET, authHandler as POST }
