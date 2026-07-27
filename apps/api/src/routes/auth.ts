@@ -55,7 +55,67 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       ...(bodyPayload !== undefined ? { body: bodyPayload } : {}),
     })
 
-    const response = await auth.handler(webRequest)
+    // ── TEMPORARY DIAGNOSTIC LOGGING ──────────────────────────────────────────
+    // Log every auth request so we can identify exceptions on Railway.
+    // Remove after the root cause is confirmed.
+    const isSignUp = request.url.includes('sign-up')
+    if (isSignUp) {
+      app.log.info({
+        msg: '[auth-diag] sign-up request received',
+        method: request.method,
+        url: request.url,
+        bodyKeys: request.body != null ? Object.keys(request.body as Record<string, unknown>) : null,
+      })
+    }
+
+    let response: Response
+    try {
+      response = await auth.handler(webRequest)
+    } catch (err: unknown) {
+      // Catch any synchronous or async exception thrown by Better Auth or the
+      // database hook before it becomes an unhandled rejection / silent 500.
+      const error = err as Error & {
+        code?: string
+        constraint?: string
+        table?: string
+        detail?: string
+        routine?: string
+      }
+      app.log.error({
+        msg: '[auth-diag] EXCEPTION thrown by auth.handler',
+        name: error?.name,
+        message: error?.message,
+        stack: error?.stack,
+        // PostgreSQL / pg driver fields
+        pgCode: error?.code,
+        pgConstraint: error?.constraint,
+        pgTable: error?.table,
+        pgDetail: error?.detail,
+        pgRoutine: error?.routine,
+      })
+      // Re-throw so Fastify's error handler returns 500 (same behaviour as before,
+      // but now we have the full stack in the logs).
+      throw err
+    }
+
+    if (isSignUp) {
+      app.log.info({
+        msg: '[auth-diag] sign-up response from Better Auth',
+        status: response.status,
+      })
+    }
+
+    if (response.status >= 400) {
+      const cloned = response.clone()
+      const errBody = await cloned.text()
+      app.log.warn({
+        msg: '[auth-diag] Better Auth returned error response',
+        url: request.url,
+        status: response.status,
+        body: errBody,
+      })
+    }
+    // ── END TEMPORARY DIAGNOSTIC LOGGING ──────────────────────────────────────
 
     // Forward response headers
     response.headers.forEach((value, key) => {
