@@ -10,6 +10,15 @@ const replitDevOrigins = [
 ].filter((origin): origin is string => Boolean(origin))
 
 const nextConfig: NextConfig = {
+  // Replit's Node 22 runtime blocks eval-based source maps inside Next's
+  // Edge middleware sandbox during `next dev`. Keep production builds
+  // unchanged while using a compatible devtool locally.
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.devtool = false
+    }
+    return config
+  },
   // Allow requests from the Replit preview proxy host and local IP (screenshot tooling)
   allowedDevOrigins:
     replitDevOrigins.length > 0 ? [...replitDevOrigins, '127.0.0.1'] : ['*'],
