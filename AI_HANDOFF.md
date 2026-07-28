@@ -1,7 +1,22 @@
 # AI Sales OS — Agent Handoff Document
 
-> **Last updated:** Product Polish (MVP RC) — 2026-07-21
+> **Last updated:** TypeScript build verification + Railway redeploy — 2026-07-28
 > **Next milestone:** RC2 — Real Integration Wiring (API keys)
+
+---
+
+## Build Verification — 2026-07-28
+
+`pnpm turbo run build` verified **10/10 packages + apps pass with zero TypeScript errors**:
+
+- All 7 workspace packages build clean
+- `apps/api` — `tsc --build` zero errors (incl. `exactOptionalPropertyTypes`)
+- `apps/workers` — `tsc` zero errors
+- `apps/web` — Next.js production build clean (15 routes)
+- `apps/api/src/routes/drafts.ts` — no `exactOptionalPropertyTypes` violations
+- All three Replit workflows running: Start application (5000), API Server (3001), Workers
+
+**Railway redeploy triggered** — pushed to `origin/main` to force fresh Railway builds.
 
 ---
 
