@@ -126,7 +126,9 @@ export function startEmailWorker() {
 // ─── Send email implementation ────────────────────────────────────────────────
 
 async function sendEmail(payload: SendEmailPayload): Promise<void> {
-  const { workspaceId, enrollmentId, stepNumber, contactId, emailAccountId, scheduledAt } = payload
+  const { workspaceId, enrollmentId, stepNumber, emailAccountId, scheduledAt } = payload
+  // Treat empty-string contactId as null — the DB column is UUID-typed
+  const contactId = payload.contactId || null
 
   logger.info({ event: 'email.send_start', enrollmentId, stepNumber, workspaceId })
 
@@ -215,16 +217,24 @@ async function sendEmail(payload: SendEmailPayload): Promise<void> {
     ? await db.query.contacts.findFirst({ where: eq(contacts.id, contactId) })
     : null
 
-  // Determine recipient email: contact email → company emails array → give up
+  // Determine recipient email: contact email → company emails[] → company contacts JSONB → give up
   let toEmail = contact?.email ?? ''
   if (!toEmail && enrollment.companyId) {
-    // Fallback: use the first email address stored directly on the company record.
-    // This allows E2E outreach even when no contact record has been created yet.
+    // Fallback: check both the emails[] column and the contacts JSONB array.
+    // The Discover flow populates contacts JSONB (not emails[]), so we must
+    // check both to support E2E outreach without a dedicated contact record.
     const companyRecord = await db.query.companies.findFirst({
       where: eq(companies.id, enrollment.companyId),
-      columns: { emails: true },
+      columns: { emails: true, contacts: true },
     })
-    toEmail = companyRecord?.emails?.[0] ?? ''
+    if (companyRecord?.emails?.[0]) {
+      toEmail = companyRecord.emails[0]
+    } else if (companyRecord?.contacts) {
+      // contacts is a JSONB array of { email?: string, ... }
+      const contactsJson = companyRecord.contacts as Array<{ email?: string }>
+      const firstWithEmail = contactsJson.find((c) => c.email)
+      toEmail = firstWithEmail?.email ?? ''
+    }
   }
 
   if (!toEmail) {
@@ -307,7 +317,22 @@ async function sendEmail(payload: SendEmailPayload): Promise<void> {
 
   const isConfigured = await emailPlugin.isConfigured(workspaceId)
   if (!isConfigured) {
-    logger.error({ event: 'email.plugin_not_configured', provider: account.provider })
+    logger.warn({
+      event: 'email.plugin_not_configured',
+      provider: account.provider,
+      note: 'Simulating send — no provider credentials configured',
+    })
+    // Mark as simulated so the record doesn't stay stuck in 'queued'
+    await db
+      .update(emailSends)
+      .set({ status: 'bounced', providerId: 'simulated' })
+      .where(eq(emailSends.id, sendRecord.id))
+    // Advance enrollment so the sequence can continue
+    await db
+      .update(sequenceEnrollments)
+      .set({ currentStep: stepNumber })
+      .where(eq(sequenceEnrollments.id, enrollmentId))
+    await scheduleNextStep({ workspaceId, enrollmentId, nextStep: stepNumber + 1, scheduledAt, emailAccountId })
     return
   }
 
@@ -458,7 +483,7 @@ async function scheduleNextStep(payload: ScheduleSequenceStepPayload): Promise<v
       workspaceId,
       enrollmentId,
       stepNumber: nextStep,
-      contactId: enrollment.contactId ?? '',
+      contactId: enrollment.contactId || null,
       emailAccountId: accountId,
       scheduledAt,
     },

@@ -1,90 +1,51 @@
 ---
 name: AI Sales OS Architecture
-description: Monorepo structure, key packages, plugin model, Replit gotchas, and search layer placement.
+description: Monorepo layout, route prefixes, auth flow, Replit port-proxy notes, Plugin Registry design
 ---
 
-## Project structure
+# AI Sales OS Architecture
 
-```
-apps/web        — Next.js 15 frontend (port 5000)
-apps/api        — Fastify backend (port 3001)
-packages/
-  db            — Drizzle ORM + PostgreSQL + migrations
-  logger        — Pino logger (createLogger)
-  config        — Runtime env config
-  errors        — Shared error classes
-  types         — Cross-package TypeScript types
-  queue         — BullMQ task queue
-  plugins       — Fastify plugins
-```
+## Monorepo layout
+- `apps/api` — Fastify 5, port 3001, handles all `/api/*` except auth
+- `apps/web` — Next.js 15, port 5000 in Replit (dev), proxies `/api/*` to Fastify
+- `apps/workers` — BullMQ workers (5 total: email, ai, enrichment, scraping, contact-discovery)
+- `packages/db` — Drizzle ORM schema + migrations
+- `packages/plugins` — Provider Registry (lead sources, enrichment, email sending)
+- `packages/queue` — BullMQ queue definitions + Redis connection
+- `packages/config` — Zod env validation
+- `packages/logger` — Pino logger
 
-## Sprint 1.1 completion status (as of 2026-07-23)
+## Route prefixes
+- `/api/auth/*` — Better Auth, handled inside Next.js (NOT proxied to Fastify)
+- `/api/v1/hunts`, `/api/v1/drafts`, `/api/v1/intent` — Fastify (newer routes)
+- `/api/companies`, `/api/campaigns`, `/api/sequences`, `/api/contacts`, `/api/email-accounts` — Fastify (no v1 prefix)
+- `/health/live`, `/health/ready` — Fastify only (not through proxy)
 
-All search business logic now lives on the API server. Frontend is a thin renderer.
+**Why:** Auth routes are more-specific in Next.js App Router and take priority over the `[...path]` catch-all proxy. API routes that lack `/v1/` in the path use the original prefix — do not assume all routes are under `/api/v1/`.
 
-### Search layer on API (`apps/api/src/search/`)
+## Auth flow
+- Browser → Next.js `/api/auth/*` → Better Auth (runs in Next.js process, same DB)
+- Browser → Next.js `/api/*` → catch-all proxy → Fastify
+- Fastify auth: reads `better-auth.session_token` cookie via `auth.api.getSession({ headers })`
+- `workspaceContextPlugin` extracts `workspaceId` and sets PostgreSQL RLS session var
 
-```
-types.ts                       — SearchCompany, SearchResult, SearchParams
-search-provider.ts             — SearchProvider interface + SearchHunt type
-provider-registry.ts           — ProviderRegistry (register/getAll)
-ranking-engine.ts              — RankingEngine interface + DefaultRankingEngine
-search-orchestrator.ts         — SearchOrchestratorImpl (merge + dedup + rank)
-setup.ts                       — Singleton wiring (registry + orchestrator)
-providers/mock/mock-data.ts    — 12 hardcoded Russian B2B companies
-providers/mock/mock.provider.ts— MockSearchProvider (400ms delay, filters by intent)
-providers/two-gis/             — 8 files: types, config, rate-limiter, retry-policy,
-                                  mock-fixtures, client, mapper, provider
-```
+## Plugin Registry
+- Singleton `PluginRegistry` in `packages/plugins/src/registry/`
+- Priority-ordered waterfall for single-winner tasks (email finding)
+- Category broadcast (`getByCategory`) for parallel execution
+- Circuit breaker per plugin
+- Standardized `RawCompanyData` schema
 
-- `TWOGIS_API_KEY` (no NEXT_PUBLIC_ prefix) controls the 2GIS provider
-- `useMock: true` in config.ts — flip to false when real key is set
+**Why:** Architecture cleanly supports new `ILeadSourcePlugin` implementors (2GIS, HH.ru, industry directories). New signal-based sources (news, SERP) need a future `ISignalPlugin` interface.
 
-### Search route (`apps/api/src/routes/hunts.ts`)
+## Core entity
+`Company` (not `Lead`). Multi-tenant, workspace-isolated.
 
-```
-POST /api/v1/hunts/:id/search
-  → fetch Hunt from DB (verify workspaceId)
-  → updateStatus(searching)
-  → searchOrchestrator.search(searchHunt)
-  → updateStatus(completed | failed)
-  → return { data: SearchResult }
-```
+## Replit port-proxy
+- Never call Fastify (3001) directly from the browser
+- Use relative `/api/*` paths in frontend code
+- `INTERNAL_API_URL=http://localhost:3001` in `apps/web/.env.local`
+- `NEXT_PUBLIC_API_URL=""` (empty) — proxy uses relative rewrites
 
-Backend owns all status transitions: searching → completed | failed.
-
-### Frontend after migration (`apps/web/src/lib/search/`)
-
-Kept: `types.ts` (MockCompany, SearchResult for rendering), `hunt-service.ts` (thin adapter)
-
-Deleted: search-orchestrator, provider-registry, search-provider, ranking-engine,
-         mock-search-provider, mock-search-service, mock-data, providers/ directory
-
-`hunt-service.ts` is now a one-liner proxy:
-  `search(hunt) { return searchHunt(hunt.id) }`
-
-`hunt-api.ts` exports `searchHunt(huntId)` → POST /api/v1/hunts/:id/search.
-
-Discover page (`apps/web/src/app/(dashboard)/discover/page.tsx`):
-  - Removed all `updateHuntStatus` calls (backend owns status now)
-  - `huntService.search(hunt)` call signature is unchanged
-  - UI is pixel-identical
-
-## Core architecture
-
-- **Plugin Architecture**: search providers registered in setup.ts; zero changes to routes/orchestrator to add new ones
-- **No frontend leakage**: API keys, providers, and ranking are 100% server-side
-- **Dedup keys**: INN → domain → id (first-provider-registered wins)
-- **Ranking**: rule-based DefaultRankingEngine (max 100 pts, 8 criteria), score stripped before API response
-
-## Replit gotchas
-
-- **Package dist/ must exist** before API starts. Run `pnpm turbo run build --filter='./packages/*'` on fresh env. The `scripts/post-merge.sh` automates this.
-- **Port proxy**: frontend on 5000, API on 3001. Never use `localhost` in frontend code — use relative URLs.
-- **Entity is Company, not Lead** — the DB entity is `Company`; frontend calls them "компании".
-
-## Better Auth wiring
-
-- Auth lives in `apps/api/src/plugins/auth.ts`
-- Frontend uses `@/lib/auth-client` (Better Auth React client)
-- Trust origin: `BETTER_AUTH_URL=http://localhost:3001` (shared env)
+## DB data note
+`companies.emails[]` is often empty; real emails from Discover flow go into `companies.contacts` JSONB array as `[{ email, name, role, ... }]`. Workers must check both.

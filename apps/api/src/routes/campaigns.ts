@@ -467,7 +467,7 @@ export const campaignsRoutes: FastifyPluginAsync = async (app) => {
                   workspaceId: request.workspaceId,
                   enrollmentId,
                   stepNumber: firstStep.stepNumber,
-                  contactId: body.contactId ?? '',
+                  contactId: body.contactId || null,
                   emailAccountId: account.id,
                   scheduledAt: new Date().toISOString(),
                 },
