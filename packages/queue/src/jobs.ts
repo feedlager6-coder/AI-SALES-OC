@@ -171,5 +171,7 @@ export interface ContactDiscoveryPayload {
  * BullMQ will reject a job if one with the same ID is already pending.
  */
 export function makeJobId(jobName: JobName, ...parts: string[]): string {
-  return `${jobName}:${parts.join(':')}`
+  // BullMQ rejects custom job IDs that contain ':' — use '__' as separator
+  const sanitize = (s: string) => s.replace(/:/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '_')
+  return [jobName, ...parts].map(sanitize).join('__')
 }

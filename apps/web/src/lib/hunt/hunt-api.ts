@@ -86,10 +86,10 @@ export async function createHunt(body: CreateHuntBody): Promise<Hunt> {
  * the result that comes back from this call.
  */
 export async function searchHunt(huntId: string): Promise<SearchResult> {
+  // No body — omit Content-Type so Fastify doesn't try to parse an empty JSON body
   const response = await fetch(`${BASE}/${huntId}/search`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
   })
 
   if (!response.ok) {

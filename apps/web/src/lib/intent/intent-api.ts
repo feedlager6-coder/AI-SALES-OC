@@ -15,20 +15,23 @@ import type { ParsedIntent } from './types'
 import { parseIntentMock } from './parse-intent-mock'
 
 export async function parseIntent(query: string): Promise<ParsedIntent> {
-  // ── Local mock (no backend needed) ────────────────────────────────────────
-  return parseIntentMock(query)
-
-  // ── Real backend (uncomment when API server + DB are running) ─────────────
-  // const response = await fetch('/api/v1/intent/parse', {
-  //   method: 'POST',
-  //   credentials: 'include',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({ query }),
-  // })
-  // if (!response.ok) {
-  //   const data = await response.json().catch(() => ({}))
-  //   const message = (data as { error?: { message?: string } })?.error?.message
-  //   throw new Error(message ?? `Intent parse failed (${response.status})`)
-  // }
-  // return response.json() as Promise<ParsedIntent>
+  // ── Real backend ───────────────────────────────────────────────────────────
+  try {
+    const response = await fetch('/api/v1/intent/parse', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      const message = (data as { error?: { message?: string } })?.error?.message
+      throw new Error(message ?? `Intent parse failed (${response.status})`)
+    }
+    return response.json() as Promise<ParsedIntent>
+  } catch (err) {
+    // Fallback to local mock if the API is unreachable (e.g. during local dev without API)
+    console.warn('[intent-api] Backend unavailable, falling back to mock parser:', err)
+    return parseIntentMock(query)
+  }
 }

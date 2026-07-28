@@ -19,6 +19,7 @@ import { sequencesRoutes } from './routes/sequences.js'
 import { webhooksRoutes } from './routes/webhooks.js'
 import { intentRoutes } from './routes/intent.js'
 import { huntsRoutes } from './routes/hunts.js'
+import { draftsRoutes } from './routes/drafts.js'
 
 const logger = createLogger({ name: 'api:app' })
 
@@ -69,6 +70,25 @@ export async function buildApp() {
 
   await app.register(cookie, {
     secret: env.BETTER_AUTH_SECRET,
+  })
+
+  // ─── Global empty-body parser ───────────────────────────────────────────────
+  // Fastify's default JSON parser rejects POST requests that send
+  // Content-Type: application/json with no body (e.g. POST /hunts/:id/search).
+  // This parser returns null for empty bodies so handlers receive null instead
+  // of an unhandled error. Route handlers that expect a body still get it when
+  // content is present because Fastify's built-in parser runs first for non-empty
+  // payloads — but we override for the empty case here.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    if (!body || (typeof body === 'string' && body.trim() === '')) {
+      done(null, null)
+    } else {
+      try {
+        done(null, JSON.parse(body as string))
+      } catch (err) {
+        done(err as Error, undefined)
+      }
+    }
   })
 
   // ─── Error Handler ─────────────────────────────────────────────────────────
@@ -144,6 +164,7 @@ export async function buildApp() {
   await app.register(webhooksRoutes, { prefix: '/api/webhooks' })
   await app.register(intentRoutes, { prefix: '/api/v1/intent' })
   await app.register(huntsRoutes, { prefix: '/api/v1/hunts' })
+  await app.register(draftsRoutes, { prefix: '/api/v1/drafts' })
 
   return app
 }

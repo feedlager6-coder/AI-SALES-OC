@@ -21,6 +21,10 @@ args = "Start application"
 task = "workflow.run"
 args = "API Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Workers"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -45,6 +49,14 @@ task = "shell.exec"
 args = "redis-server --daemonize yes --port 6379 --save '' --appendonly no > /tmp/redis.log 2>&1; sleep 1; cd apps/api && pnpm dev"
 waitForPort = 3001
 
+[[workflows.workflow]]
+name = "Workers"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "sleep 4 && cd apps/workers && pnpm dev"
+
 [[ports]]
 localPort = 3001
 externalPort = 3001
@@ -64,6 +76,8 @@ BETTER_AUTH_URL = "http://localhost:3001"
 LOG_LEVEL = "info"
 NODE_ENV = "development"
 REDIS_URL = "redis://localhost:6379"
+BETTER_AUTH_SECRET = "eaa2d03612ae8ea4c9bc1382e2e03b4da61418f2a13cd0a2ba06fa8dd98e08ef57b11eb1c28f1b482bd4170446673509"
+ENCRYPTION_KEY = "65363210103256ea9ed9ea0d494dba339b4a78c20d292c9a25593f767f936797"
 
 [postMerge]
 path = "scripts/post-merge.sh"
