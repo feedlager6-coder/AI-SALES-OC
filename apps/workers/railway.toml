@@ -28,9 +28,9 @@
 builder = "NIXPACKS"
 # "..." suffix: builds @ai-sales-os/workers AND all workspace dependencies in order.
 # Avoids --frozen-lockfile which can fail on Railway when optional deps differ by OS.
-buildCommand = "pnpm install && pnpm turbo run build --filter=@ai-sales-os/workers..."
+buildCommand = "pnpm install && pnpm turbo run build --filter=@ai-sales-os/workers... && pnpm --filter=@ai-sales-os/workers deploy --legacy --prod apps/workers/production"
 
 [deploy]
-startCommand = "node apps/workers/dist/main.js"
+startCommand = "node apps/workers/production/dist/main.js"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5

@@ -12,6 +12,11 @@ import path from 'path'
 const logger = createLogger({ name: 'api:server' })
 
 async function main() {
+  // The postgres-js migrator + ioredis each add process exit/signal listeners.
+  // With 6+ migrations the default limit of 10 is exceeded, causing a spurious
+  // MaxListenersExceededWarning. Raise to 30 — still catches real leaks.
+  process.setMaxListeners(30)
+
   const env = getEnv()
 
   // Resolve the migrations folder.
