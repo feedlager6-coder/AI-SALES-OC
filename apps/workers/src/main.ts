@@ -12,6 +12,10 @@ import { startContactDiscoveryWorker } from './contact-discovery/contact-discove
 const logger = createLogger({ name: 'workers:main' })
 
 async function main() {
+  // BullMQ workers + ioredis each register process exit/signal listeners.
+  // Raise the limit to avoid the spurious MaxListenersExceededWarning.
+  process.setMaxListeners(30)
+
   getEnv() // Validate env at startup
 
   registerAllPlugins()
