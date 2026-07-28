@@ -70,12 +70,9 @@ const SaveDraftBodySchema = z.object({
 
 // ─── Template fallback ────────────────────────────────────────────────────────
 
-function buildTemplateDraft(company: {
-  name: string
-  industry: string
-  region: string
-  contact?: { name?: string }
-}): { subject: string; bodyText: string } {
+type GenerateCompanyInput = z.infer<typeof GenerateDraftBodySchema>['company']
+
+function buildTemplateDraft(company: GenerateCompanyInput): { subject: string; bodyText: string } {
   const contactName = company.contact?.name?.split(' ')[0] ?? 'коллега'
   return {
     subject: `Сотрудничество с ${company.name}`,
