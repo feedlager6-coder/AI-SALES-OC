@@ -70,7 +70,7 @@ export interface SendEmailPayload {
   workspaceId: string
   enrollmentId: string
   stepNumber: number
-  contactId: string
+  contactId: string | null
   emailAccountId: string
   scheduledAt: string // ISO8601
 }
