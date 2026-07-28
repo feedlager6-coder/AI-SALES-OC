@@ -9,14 +9,16 @@ import { startAiWorker } from './ai/ai.worker.js'
 import { startScrapingWorker } from './scraping/scraping.worker.js'
 import { startContactDiscoveryWorker } from './contact-discovery/contact-discovery.worker.js'
 
+// Raise the process listener limit at module evaluation time — before any
+// BullMQ Worker or ioredis instance registers its own exit/signal listeners.
+// With 5 workers × ~4 internal listeners each the default limit of 10 is
+// exceeded, which produces a spurious MaxListenersExceededWarning in Node.js.
+process.setMaxListeners(50)
+
 const logger = createLogger({ name: 'workers:main' })
 
 async function main() {
-  // BullMQ workers + ioredis each register process exit/signal listeners.
-  // Raise the limit to avoid the spurious MaxListenersExceededWarning.
-  process.setMaxListeners(30)
-
-  getEnv() // Validate env at startup
+  getEnv() // Validate env at startup — crashes fast if a required var is absent
 
   registerAllPlugins()
 
