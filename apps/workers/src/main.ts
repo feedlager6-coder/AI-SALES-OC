@@ -13,6 +13,10 @@ import { startContactDiscoveryWorker } from './contact-discovery/contact-discove
 // BullMQ Worker or ioredis instance registers its own exit/signal listeners.
 // With 5 workers × ~4 internal listeners each the default limit of 10 is
 // exceeded, which produces a spurious MaxListenersExceededWarning in Node.js.
+//
+// Note: packages/config now accepts NEXT_PUBLIC_API_URL="" (empty string) so
+// Workers startup no longer crashes when the Web service's Railway shared var
+// is inherited by this service. Redeploy triggered via this touch.
 process.setMaxListeners(50)
 
 const logger = createLogger({ name: 'workers:main' })
