@@ -17,6 +17,8 @@ import { ProviderRegistry } from './provider-registry.js'
 import { SearchOrchestratorImpl } from './search-orchestrator.js'
 import { MockSearchProvider } from './providers/mock/mock.provider.js'
 import { TwoGISProvider } from './providers/two-gis/provider.js'
+import { RealTwoGISClient } from './providers/two-gis/client.js'
+import { defaultTwoGISConfig } from './providers/two-gis/config.js'
 import { V4RankingEngine } from './v4-ranking-engine.js'
 import { getRedisConnection } from '@ai-sales-os/queue'
 
@@ -28,7 +30,17 @@ import { getRedisConnection } from '@ai-sales-os/queue'
 //
 export const providerRegistry = new ProviderRegistry()
 providerRegistry.register(new MockSearchProvider(), 1)
-providerRegistry.register(new TwoGISProvider(), 1)  // MockTwoGISClient until useMock=false
+
+// Use the real 2GIS HTTP client when TWOGIS_API_KEY is set, otherwise fall
+// back to the built-in MockTwoGISClient so the provider always returns data.
+const twoGISApiKey = process.env['TWOGIS_API_KEY']
+const twoGISProvider = twoGISApiKey
+  ? new TwoGISProvider({
+      client: new RealTwoGISClient(defaultTwoGISConfig.baseUrl, defaultTwoGISConfig.timeoutMs),
+      config: { ...defaultTwoGISConfig, apiKey: twoGISApiKey, useMock: false },
+    })
+  : new TwoGISProvider() // MockTwoGISClient via defaultTwoGISConfig.useMock = true
+providerRegistry.register(twoGISProvider, 1)
 
 // ─── V4 Ranking Engine ────────────────────────────────────────────────────────
 //

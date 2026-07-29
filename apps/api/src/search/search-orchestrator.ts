@@ -265,10 +265,27 @@ export class SearchOrchestratorImpl implements SearchOrchestrator {
     const top10 = rankedCompanies.slice(0, CONTACT_DISCOVERY_SYNC_LIMIT)
     const rest  = rankedCompanies.slice(CONTACT_DISCOVERY_SYNC_LIMIT)
 
+    // Hard deadline for the whole top-10 block so slow external APIs (DaData,
+    // Hunter, Snov) don't push the total response time past the UI's 8-second
+    // window (3 s animation + 5 s polling). If the timeout fires, allSettled
+    // sees each in-flight promise as rejected and contacts are simply omitted.
+    const SYNC_CONTACT_DISCOVERY_TIMEOUT_MS = 4_000
+
+    const withTimeout = <T>(p: Promise<T>): Promise<T> =>
+      Promise.race([
+        p,
+        new Promise<T>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('contact_discovery_sync_timeout')),
+            SYNC_CONTACT_DISCOVERY_TIMEOUT_MS,
+          ),
+        ),
+      ])
+
     // Run discovery for top-10 in parallel — results attached before HTTP response
     const top10ContactResults = await Promise.allSettled(
       top10.map((company) =>
-        this.contactDiscovery.findForCompany(company, workspaceId, verticalContext),
+        withTimeout(this.contactDiscovery.findForCompany(company, workspaceId, verticalContext)),
       ),
     )
 

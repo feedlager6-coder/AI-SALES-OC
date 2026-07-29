@@ -57,7 +57,14 @@ const envSchema = z.object({
   WEB_URL: z.string().url().optional(),
 
   // Frontend
-  NEXT_PUBLIC_API_URL: z.string().url().default('http://localhost:3001'),
+  // Accepts an empty string ("") because the Web service intentionally sets
+  // NEXT_PUBLIC_API_URL="" to force relative /api/* rewrites. When the variable
+  // is "" or absent, Workers and API fall back to the localhost default which
+  // is unused at runtime but satisfies the schema.
+  NEXT_PUBLIC_API_URL: z
+    .union([z.string().url(), z.literal('')])
+    .default('http://localhost:3001')
+    .transform((v) => (v === '' ? 'http://localhost:3001' : v)),
 })
 
 export type Env = z.infer<typeof envSchema>
