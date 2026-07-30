@@ -61,7 +61,7 @@ export class TwoGISProvider implements SearchProvider {
       const cityId   = resolveCityId(hunt.intentJson.region)
       const response = await this.retryPolicy.execute(() =>
         this.client.search({
-          q:         this.buildQuery(hunt),
+          q:         this.buildQuery(hunt, cityId),
           ...(cityId !== undefined ? { city_id: cityId } : {}),
           type:      'branch',
           fields:    this.config.fields,
@@ -76,10 +76,13 @@ export class TwoGISProvider implements SearchProvider {
     }
   }
 
-  private buildQuery(hunt: SearchHunt): string {
+  private buildQuery(hunt: SearchHunt, cityId?: string): string {
     const parts: string[] = []
     if (hunt.intentJson.industry)         parts.push(hunt.intentJson.industry)
     if (hunt.intentJson.clarifyingAnswer) parts.push(hunt.intentJson.clarifyingAnswer)
+    // When no verified city_id is available, append the region to the text query so
+    // 2GIS can still geo-filter results (e.g. "логистика Санкт-Петербург").
+    if (!cityId && hunt.intentJson.region) parts.push(hunt.intentJson.region)
     return parts.length > 0 ? parts.join(' ') : hunt.rawQuery
   }
 

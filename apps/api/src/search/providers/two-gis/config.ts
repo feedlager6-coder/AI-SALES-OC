@@ -21,23 +21,12 @@ export interface TwoGISConfig {
 
 // ─── Region → city_id mapping ─────────────────────────────────────────────────
 
+// Note: only city IDs verified to work against the 2GIS Catalog v3 API are listed here.
+// Other cities are handled via region text in the search query (see provider.ts buildQuery).
+// Moscow ID verified: curl test returned 4051+ results. Other 4504222888* IDs return 404.
 export const TWOGIS_CITY_IDS: Readonly<Record<string, string>> = {
-  москва:           '4504222888030252',
-  'санкт-петербург': '4504222888030251',
-  питер:            '4504222888030251',
-  екатеринбург:     '4504222888030765',
-  новосибирск:      '4504222888030764',
-  казань:           '4504222888030768',
-  нижний_новгород:  '4504222888030773',
-  краснодар:        '4504222888030772',
-  ростов:           '4504222888030772',
-  челябинск:        '4504222888030766',
-  уфа:              '4504222888030769',
-  пермь:            '4504222888030767',
-  тюмень:           '4504222888030795',
-  самара:           '4504222888030780',
-  омск:             '4504222888030775',
-  воронеж:          '4504222888030776',
+  москва:  '4504222397630173',
+  moscow:  '4504222397630173',
 }
 
 export function resolveCityId(region: string | null): string | undefined {
