@@ -74,10 +74,24 @@ export class RealTwoGISClient implements TwoGISClient {
       throw new TwoGISClientError(`2GIS API returned ${response.status}`, response.status, body)
     }
 
+    let parsed: TwoGISApiResponse
     try {
-      return JSON.parse(body) as TwoGISApiResponse
+      parsed = JSON.parse(body) as TwoGISApiResponse
     } catch {
       throw new TwoGISClientError('2GIS API returned non-JSON response', response.status, body)
     }
+
+    // 2GIS can return HTTP 200 with meta.code 4xx (e.g. 403 auth, 404 no results).
+    // Treat auth failures as hard errors so misconfigured keys surface clearly.
+    if (parsed.meta?.code === 403 || parsed.meta?.code === 401) {
+      throw new TwoGISClientError(
+        `2GIS API auth failed (meta.code=${parsed.meta.code}). Check TWOGIS_API_KEY.`,
+        parsed.meta.code,
+        body,
+      )
+    }
+
+    // meta.code 404 means no results — return as-is; mapper handles result?.items ?? [].
+    return parsed
   }
 }

@@ -101,10 +101,16 @@ export class TwoGISMapper {
   }
 
   toSearchResult(response: TwoGISApiResponse, query: SearchParams): SearchResult {
-    const companies = response.result.items
+    // 2GIS returns HTTP 200 with meta.code=404 and no `result` field when no
+    // results are found (wrong city_id, too-narrow query, etc.). Guard here so
+    // the orchestrator gets an empty result instead of crashing.
+    const items    = response.result?.items ?? []
+    const total    = response.result?.total ?? 0
+
+    const companies = items
       .map((item) => this.toCompany(item))
       .filter((c): c is SearchCompany => c !== null)
 
-    return { companies, totalFound: response.result.total, query }
+    return { companies, totalFound: total, query }
   }
 }
