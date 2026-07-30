@@ -1,0 +1,36 @@
+# Railway configuration for the Workers service (BullMQ background jobs).
+# In Railway: create a service, set Root Directory to "/" (repo root).
+# Workers do not expose an HTTP port — disable port detection in the Railway UI
+# (set "Health Check" to disabled for this service).
+#
+# ─── Required environment variables ───────────────────────────────────────────
+#   DATABASE_URL       — PostgreSQL 16 connection string (postgres://...)
+#   REDIS_URL          — Redis 7 connection string (redis://...)
+#   BETTER_AUTH_SECRET — Auth signing secret ≥32 chars  (openssl rand -hex 32)
+#   ENCRYPTION_KEY     — 64 hex chars / 32 bytes AES-256 (openssl rand -hex 32)
+#   NODE_ENV           — set to "production"
+#
+#   NOTE: All four of the above are validated at startup by getEnv().
+#   Missing any of them will crash the worker process immediately.
+#   BETTER_AUTH_URL is optional for workers but must be set as a shared var.
+#
+# ─── Optional environment variables (enable specific worker features) ──────────
+#   OPENAI_API_KEY, ANTHROPIC_API_KEY  — AI email generation / classification
+#   MAILGUN_API_KEY, MAILGUN_DOMAIN    — email sending via Mailgun
+#   BREVO_API_KEY                      — email sending via Brevo
+#   HUNTER_API_KEY, SNOV_API_KEY       — contact email discovery
+#   DADATA_API_KEY                     — Russian company registry enrichment
+#   TWOGIS_API_KEY                     — 2GIS lead source
+#   TELEGRAM_BOT_TOKEN                 — Telegram notifications
+#   MINIO_ENDPOINT, MINIO_PORT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_BUCKET, MINIO_USE_SSL
+
+[build]
+builder = "NIXPACKS"
+# "..." suffix: builds @ai-sales-os/workers AND all workspace dependencies in order.
+# Avoids --frozen-lockfile which can fail on Railway when optional deps differ by OS.
+buildCommand = "pnpm install && pnpm turbo run build --filter=@ai-sales-os/workers... && pnpm --filter=@ai-sales-os/workers deploy --legacy --prod apps/workers/production"
+
+[deploy]
+startCommand = "node apps/workers/production/dist/main.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
